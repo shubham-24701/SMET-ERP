@@ -16,7 +16,7 @@ prompt (§28), which are supplementary and not part of the original list.
 | 39 | Race Conditions | Pass for setup and job claims; stock and serials in P2–P3 |
 | 44 | Backpressure | Request size, page size, export size and hashing limits pass |
 | 59 | Logging | Redaction tests pass |
-| 67 | Secrets Management | Built; secret scan pending the first CI run |
+| 67 | Secrets Management | Built; secret scan blocked until CI can run (GitHub billing) |
 | 68 | IAM | Pass (route matrix, escalation guards, database grants) |
 | 69 | OAuth | Not applicable now |
 | 70 | JWT Rotation | Not applicable: opaque sessions, rotated at sign-in (tests pass) |

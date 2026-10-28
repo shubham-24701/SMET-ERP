@@ -21,7 +21,7 @@ decision in Phase 8 and are marked Pending, not Pass.
 | 3 | Load Balancing | Pending | One small server is enough; a load balancer would need a shared rate-limit store and a separate worker first | — | — | Not tested | P8 deployment note; revisit at >1 server |
 | 4 | Reverse Proxies | Applicable | Production sits behind a reverse proxy (TLS, HTTP/2, compression). The app ignores proxy headers by default and only answers allowed host names | `--no-proxy-headers`, `TrustedHostMiddleware` | `test_unknown_hosts_are_refused` | Pass (host allow-list) | P8: proxy config and real-IP handling |
 | 5 | API Gateways | Not applicable | One API; what a gateway would do (auth, limits, size caps, headers) is in the app's middleware | `main.py` | — | N/A | Revisit if third parties consume the API |
-| 6 | CI/CD | Applicable | CI on every push: lint, tests on Linux and Windows with PostgreSQL, Edge journeys, secret scan, audits. Deployment stays manual until hosting is approved | `.github/workflows/ci.yml` | first CI run | Not tested (pending run) | P8: a release workflow |
+| 6 | CI/CD | Applicable | CI on every push: lint, tests on Linux and Windows with PostgreSQL, Edge journeys, secret scan, audits. Deployment stays manual until hosting is approved | `.github/workflows/ci.yml` | first CI run (40694915802) | Blocked: GitHub did not start jobs (account billing) | Owner resolves billing; P8: a release workflow |
 | 7 | Docker | Partial | Not required to develop (the owner's laptop has none). A production image is useful for hosting | — | — | Not tested | P8: Dockerfile + compose, built in CI |
 | 8 | Kubernetes | Not applicable | One app and one database; a cluster's cost and operation are not justified at SMET's scale | — | — | N/A | Revisit at several services or teams |
 | 9 | Service Discovery | Not applicable | Fixed addresses: one API, one database | — | — | N/A | — |
@@ -82,7 +82,7 @@ decision in Phase 8 and are marked Pending, not Pass.
 | 64 | SLI's | Pending | Candidates: API availability, p95 latency, failed jobs, notification failures, backup success | — | — | Not tested | P8 |
 | 65 | Error Budgets | Pending | Follows the SLOs | — | — | Not tested | P8 |
 | 66 | Observability | Partial | Logs, request ids, health and system pages | as above | as above | Pass (P1 scope) | P8 |
-| 67 | Secrets Management | Applicable | `.env` never committed; `setup_db` generates database passwords; no secret reaches the web app; secret scan in CI; provider credentials will be stored encrypted | `.gitignore`, `setup_db.py`, CI `secrets` | gitleaks in CI | Not tested (pending run) | P7: encrypted credentials |
+| 67 | Secrets Management | Applicable | `.env` never committed; `setup_db` generates database passwords; no secret reaches the web app; secret scan in CI; provider credentials will be stored encrypted | `.gitignore`, `setup_db.py`, CI `secrets` | gitleaks in CI | Blocked (CI not running: account billing) | P7: encrypted credentials |
 | 68 | IAM | Applicable | Configurable permissions, escalation guards, separate database logins (ADR-003, ADR-005) | `rbac.py`, `admin.py`, `setup_db.py` | `test_security_matrix.py`, `test_admin.py`, audit grant tests | Pass | P2+: data scoping by party |
 | 69 | OAuth | Not applicable (now) | Staff sign in with SMET accounts; OAuth only if a mail provider requires it for sending (P7) | — | — | N/A | P7 |
 | 70 | JWT Rotation | Not applicable | No JWTs (ADR-004); the session token is replaced at every sign-in and all others end on a password change | `auth.start_session` | `test_each_sign_in_issues_a_new_session_token`, `test_changing_password_signs_out_other_sessions` | N/A (equivalent controls pass) | Revisit if tokens are introduced |
@@ -122,7 +122,7 @@ decision in Phase 8 and are marked Pending, not Pass.
 | 104 | Infrastructure as a Code | Pending | A compose file and setup script are the proportionate form for one server | `setup_db.py` (database) | CI uses it | Partial | P8 |
 | 105 | Terraform | Not applicable (likely) | One server doesn't need it; decided with hosting | — | — | N/A | P8 review |
 | 106 | Helm Charts | Not applicable | No Kubernetes | — | — | N/A | — |
-| 107 | Build Caching | Applicable | CI caches npm packages; uv caches wheels | `ci.yml` | first CI run | Not tested (pending run) | — |
+| 107 | Build Caching | Applicable | CI caches npm packages; uv caches wheels | `ci.yml` | first CI run | Blocked (CI not running: account billing) | — |
 | 108 | Dependency Hell | Applicable | Lock files (`uv.lock`, `package-lock.json`), Python pinned to 3.13, TypeScript ~6.0, audits in CI | lock files | `pip-audit`, `npm audit` | Pass | Renovate-style updates later |
 | 109 | Production Incidents | Applicable | Severity levels, triage, evidence, customer-data handling | — | — | Not tested | P8 runbook |
 | 110 | On Call | Applicable | Business-hours ownership for a small team; no 24/7 rota assumed | — | — | Not tested | P8 |

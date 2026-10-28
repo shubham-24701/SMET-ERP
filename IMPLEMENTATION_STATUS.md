@@ -62,7 +62,11 @@ See [docs/TEST_RESULTS.md](docs/TEST_RESULTS.md) for the commands and outputs.
 - Browser: 2 Playwright journeys passed locally (Chromium); CI will run them in Edge on Windows.
 - Design: taste-skill inspector, app rules, 0 FAIL on every screen; remaining WARNs are defended
   in [docs/DESIGN.md](docs/DESIGN.md).
-- CI (GitHub Actions): pending the first run of this branch.
+- CI (GitHub Actions): **blocked.** The first run (40694915802) did not start any job: GitHub reports
+  that recent account payments failed or the spending limit must be raised (private repositories use
+  paid Actions minutes beyond the free allowance). So the Windows and Edge checks have **not run yet**.
+  Owner's choice: fix the billing setting, or make the repository public (Actions is free for public
+  repositories), or run the README checks on the laptop.
 
 ## Known limitations (Phase 1)
 
@@ -73,6 +77,8 @@ See [docs/TEST_RESULTS.md](docs/TEST_RESULTS.md) for the commands and outputs.
 - Dark mode is styled but was not photographed by the inspector.
 
 ## Blockers
+
+- CI cannot run until the GitHub billing issue above is resolved by the owner (no change made here).
 
 None that stop Phase 2 from being built: every rule it needs has a safe, changeable default. The
 answers marked *(Phase 2)* in [docs/ASSUMPTIONS_AND_OPEN_QUESTIONS.md](docs/ASSUMPTIONS_AND_OPEN_QUESTIONS.md)

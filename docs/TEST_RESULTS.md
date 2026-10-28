@@ -18,12 +18,13 @@ Every result below was produced by running the command shown. Results that have 
 | npm audit | `npm audit --omit=dev` | found 0 vulnerabilities |
 | Browser journeys | `npx playwright test` (local Chromium) | **2 passed**: admin → new user → forced password change → limited menu and 403 from the API; phone width without sideways scroll |
 | Design inspector | `inspect.mjs --app` on 6 screens + sign-in, at 1440/768/390 | 0 FAIL; WARNs listed in DESIGN.md |
+| Secret scan (stand-in for CI's gitleaks) | `uvx detect-secrets scan --all-files` | Only expected hits: synthetic test passwords, the CI-only database password, `CHANGE_ME` placeholders, the URL template in `setup_db.py`; `backend/.env` (real local passwords) is gitignored and not committed |
 | Database privileges | `psql` as `smet_app`: UPDATE/DELETE/TRUNCATE on `audit_events` | permission denied; as owner: "audit_events is append-only" |
 
 ## CI (GitHub Actions)
 
-Not yet run for this branch at the time of writing; the run's outcome is recorded in
-IMPLEMENTATION_STATUS.md once it finishes. Jobs: backend on Ubuntu (PostgreSQL 17 container) and on
+Run 40694915802 (push of `phase-1`): **no job started**. GitHub's annotation: recent account payments
+failed or the spending limit needs to be increased. Nothing was verified by CI. Jobs: backend on Ubuntu (PostgreSQL 17 container) and on
 Windows (the runner's PostgreSQL), frontend checks, Playwright in Edge on Windows, gitleaks, pip-audit.
 
 ## Not run
