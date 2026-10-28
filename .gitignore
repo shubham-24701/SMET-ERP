@@ -1,0 +1,23 @@
+# secrets and local data
+backend/.env
+*.env.local
+backend/data/
+backend/uploads/
+backups/
+# python
+__pycache__/
+.venv/
+.pytest_cache/
+.ruff_cache/
+junit.xml
+# node
+node_modules/
+frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
+frontend/e2e-screens/
+frontend/pw.local.config.ts
+*.tsbuildinfo
+
+# design inspector screenshots (local)
+.taste-skill/
