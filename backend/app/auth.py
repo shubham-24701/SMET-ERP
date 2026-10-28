@@ -16,7 +16,7 @@ from typing import Annotated
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, StringConstraints, field_validator
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -65,8 +65,10 @@ def check_password(v: str) -> str:
 
 
 class SetupIn(BaseModel):
-    company_name: str = Field(min_length=2, max_length=160)
-    name: str = Field(min_length=1, max_length=120)
+    company_name: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=2, max_length=160)
+    ]
+    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
     email: str = Field(max_length=254, pattern=EMAIL_PATTERN)
     password: str = Field(max_length=256)
     _pw = field_validator("password")(check_password)
@@ -205,19 +207,19 @@ def setup(body: SetupIn, response: Response, db: DB) -> dict:
     done = HTTPException(status.HTTP_409_CONFLICT, "Setup has already been completed")
     if db.get(Company, 1):
         raise done
-    db.add(Company(id=1, name=body.company_name.strip()))
+    db.add(Company(id=1, name=body.company_name))
     try:
         db.flush()  # a simultaneous setup collides on id 1 here
     except IntegrityError:
         raise done from None
-    user = User(email=body.email.strip().lower(), name=body.name.strip(),
+    user = User(email=body.email.strip().lower(), name=body.name,
                 password_hash=hasher.hash(body.password))  # fmt: skip
     db.add(user)
     sync_templates(db)
     admin_role = db.scalar(select(Role).where(Role.template_key == "system_admin"))
     db.flush()
     db.add(UserRole(user_id=user.id, role_id=admin_role.id))
-    record(db, user, "company.setup", "company", 1, f"{body.company_name.strip()} set up")
+    record(db, user, "company.setup", "company", 1, f"{body.company_name} set up")
     start_session(db, response, user)
     roles, perms = load_access(db, user.id)
     return me_payload(Principal(user, None, roles, perms), db)

@@ -48,7 +48,9 @@ def setup(admin_url: str, host: str, port: int) -> dict[str, str]:
             conn.execute(
                 sql.SQL("REVOKE ALL ON DATABASE {} FROM PUBLIC").format(sql.Identifier(db))
             )
-            conn.execute(sql.SQL("GRANT CONNECT, TEMPORARY ON DATABASE {} TO {}").format(
+            conn.execute(sql.SQL("REVOKE TEMPORARY ON DATABASE {} FROM {}").format(
+                sql.Identifier(db), sql.Identifier(APP)))  # fmt: skip
+            conn.execute(sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(
                 sql.Identifier(db), sql.Identifier(APP)))  # fmt: skip
     for db in DATABASES:  # privileges are per database: connect to each one
         with psycopg.connect(make_conninfo(admin_url, dbname=db), autocommit=True) as conn:
@@ -66,9 +68,12 @@ def setup(admin_url: str, host: str, port: int) -> dict[str, str]:
                 sql.Identifier(APP)))  # fmt: skip
             conn.execute(sql.SQL("GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {}").format(
                 sql.Identifier(APP)))  # fmt: skip
-            if conn.execute("SELECT to_regclass('public.audit_events')").fetchone()[0]:
-                conn.execute(sql.SQL("REVOKE UPDATE, DELETE, TRUNCATE ON audit_events FROM {}").format(
-                    sql.Identifier(APP)))  # fmt: skip
+            # ...except where the migrations take rights away again: history and the schema record.
+            for table, rights in (("audit_events", "UPDATE, DELETE, TRUNCATE"),
+                                  ("alembic_version", "INSERT, UPDATE, DELETE, TRUNCATE")):  # fmt: skip
+                if conn.execute("SELECT to_regclass(%s)", (f"public.{table}",)).fetchone()[0]:
+                    conn.execute(sql.SQL("REVOKE " + rights + " ON {} FROM {}").format(
+                        sql.Identifier(table), sql.Identifier(APP)))  # fmt: skip
     values = {}
     for db, (app_key, owner_key) in DATABASES.items():
         values[app_key] = url(APP, pw[APP], host, port, db)
@@ -80,6 +85,7 @@ def write_env(values: dict[str, str]) -> None:
     lines = ENV.read_text().splitlines() if ENV.exists() else []
     kept = [ln for ln in lines if ln.split("=", 1)[0].strip() not in values]
     ENV.write_text("\n".join([*kept, *(f"{k}={v}" for k, v in values.items())]) + "\n")
+    ENV.chmod(0o600)  # the passwords are for this account only (on Windows: makes it read-write)
 
 
 def main() -> None:

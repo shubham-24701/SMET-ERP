@@ -13,8 +13,15 @@ export function useCan() {
 /** A timestamp in the company's time zone (Asia/Dubai by default), e.g. "28 Oct 2026, 14:05". */
 export function useWhen() {
   const tz = useMe().company.timezone
-  return (iso: string | null | undefined) =>
-    iso ? new Date(iso).toLocaleString('en-GB', { timeZone: tz, dateStyle: 'medium', timeStyle: 'short' }) : '—'
+  return (iso: string | null | undefined) => {
+    if (!iso) return '—'
+    const opts = { dateStyle: 'medium', timeStyle: 'short' } as const
+    try {
+      return new Date(iso).toLocaleString('en-GB', { ...opts, timeZone: tz })
+    } catch { // a zone this browser doesn't know: show the browser's own time rather than nothing
+      return new Date(iso).toLocaleString('en-GB', opts)
+    }
+  }
 }
 
 /** GET a path and keep it fresh; `reload` after writes. A null path loads nothing. */

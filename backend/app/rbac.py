@@ -28,6 +28,15 @@ PERMISSIONS: dict[str, tuple[str, str]] = {
 }
 
 ADMIN_PERMS = list(PERMISSIONS)
+
+
+def is_guarded(perm: str) -> bool:
+    """Permissions that give power over other people or the system's configuration. Nobody can
+    grant one they don't hold, nor change someone who holds one they lack."""
+    module, _, action = perm.partition(".")
+    return module in ("users", "roles") or action in ("configure", "sensitive")
+
+
 OVERSIGHT = ["users.view", "roles.view", "audit.view", "settings.view", "system.view"]
 
 # key -> (name, audience, description, permissions). Business permissions arrive with each phase.

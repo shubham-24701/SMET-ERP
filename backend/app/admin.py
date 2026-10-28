@@ -10,18 +10,18 @@ import secrets
 import uuid
 from datetime import datetime
 from typing import Annotated, Literal
-from zoneinfo import ZoneInfo, available_timezones
+from zoneinfo import available_timezones
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
-from sqlalchemy import Select, delete, func, or_, select
+from pydantic import BaseModel, Field, StringConstraints
+from sqlalchemy import Select, delete, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 
 from app.audit import diff, record
-from app.auth import DB, EMAIL_PATTERN, Principal, hasher, require
+from app.auth import DB, EMAIL_PATTERN, Principal, hasher, load_access, require
 from app.models import AuditEvent, AuthSession, Company, Role, RolePermission, User, UserRole
-from app.rbac import PERMISSIONS
+from app.rbac import PERMISSIONS, is_guarded
 
 router = APIRouter(tags=["admin"])
 ADMIN_POWERS = ("users.edit", "roles.configure")
@@ -34,6 +34,35 @@ def field_error(field: str, msg: str) -> HTTPException:
 def stale() -> HTTPException:
     return HTTPException(
         status.HTTP_409_CONFLICT, "Someone else changed this just now. Reload and try again."
+    )
+
+
+Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
+RoleName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=80)]
+Text500 = Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)]
+
+
+def serialize_access_changes(db: DB) -> None:
+    """One change to users or roles at a time (a transaction-scoped lock), so two administrators
+    removing each other at the same moment can't both pass the "an admin remains" check."""
+    db.execute(text("SELECT pg_advisory_xact_lock(74610001)"))
+
+
+def guard(p: Principal, perms, what: str) -> None:
+    """Refuse when `perms` include a guarded permission the caller doesn't hold (no escalation)."""
+    missing = sorted(x for x in perms if is_guarded(x) and x not in p.permissions)
+    if missing:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            f"You can't {what}: it involves {missing[0]}, which you don't hold yourself.",
+        )
+
+
+def _perms_of_roles(db: DB, role_ids) -> set[str]:
+    if not role_ids:
+        return set()
+    return set(
+        db.scalars(select(RolePermission.permission).where(RolePermission.role_id.in_(role_ids)))
     )
 
 
@@ -64,17 +93,17 @@ def _ensure_an_admin_remains(db: DB) -> None:
 
 
 class UserIn(BaseModel):
-    name: str = Field(min_length=1, max_length=120)
+    name: Name
     email: str = Field(max_length=254, pattern=EMAIL_PATTERN)
     role_ids: list[uuid.UUID] = Field(default=[], max_length=20)
 
 
 class UserPatch(BaseModel):
     version: int
-    name: str | None = Field(default=None, min_length=1, max_length=120)
+    name: Name | None = None
     role_ids: list[uuid.UUID] | None = Field(default=None, max_length=20)
     active: bool | None = None
-    reason: str = Field(default="", max_length=500)
+    reason: Text500 = ""
 
 
 def _roles_of(db: DB, user_ids) -> dict:
@@ -149,8 +178,9 @@ def create_user(body: UserIn, p: require("users.create"), db: DB) -> dict:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, "Giving roles needs the users.edit permission"
         )
+    guard(p, _perms_of_roles(db, [r.id for r in roles]), "give these roles")
     password = temporary_password()
-    user = User(email=body.email.strip().lower(), name=body.name.strip(),
+    user = User(email=body.email.strip().lower(), name=body.name,
                 password_hash=hasher.hash(password), must_change_password=True)  # fmt: skip
     db.add(user)
     try:
@@ -166,26 +196,30 @@ def create_user(body: UserIn, p: require("users.create"), db: DB) -> dict:
     return row | {"temporary_password": password}  # shown once; they must change it at sign-in
 
 
-def _user_or_404(db: DB, user_id: uuid.UUID) -> User:
-    user = db.get(User, user_id)
+def _managed_user(db: DB, p: Principal, user_id: uuid.UUID, what: str) -> User:
+    """The user, locked for this transaction, if the caller holds every guarded permission they do."""
+    serialize_access_changes(db)
+    user = db.get(User, user_id, with_for_update=True)
     if user is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    guard(p, load_access(db, user.id)[1], what)
     return user
 
 
 @router.patch("/users/{user_id}")
 def update_user(user_id: uuid.UUID, body: UserPatch, p: require("users.edit"), db: DB) -> dict:
-    user = _user_or_404(db, user_id)
+    if user_id == p.user.id and (body.role_ids is not None or body.active is not None):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You can't change your own roles or access")
+    user = _managed_user(db, p, user_id, "change this user")
     if user.version != body.version:
         raise stale()
-    if user.id == p.user.id and (body.role_ids is not None or body.active is not None):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "You can't change your own roles or access")
     old_roles = sorted(r["name"] for r in _roles_of(db, [user.id]).get(user.id, []))
     before = {"name": user.name, "active": user.active, "roles": old_roles}
     if body.name is not None:
-        user.name = body.name.strip()
+        user.name = body.name
     if body.role_ids is not None:
         roles = _checked_roles(db, body.role_ids)
+        guard(p, _perms_of_roles(db, [r.id for r in roles]), "give these roles")
         db.execute(delete(UserRole).where(UserRole.user_id == user.id))
         db.add_all([UserRole(user_id=user.id, role_id=r.id) for r in roles])
     if body.active is not None:
@@ -207,11 +241,11 @@ def update_user(user_id: uuid.UUID, body: UserPatch, p: require("users.edit"), d
 
 @router.post("/users/{user_id}/reset-password")
 def reset_password(user_id: uuid.UUID, p: require("users.edit"), db: DB) -> dict:
-    user = _user_or_404(db, user_id)
-    if user.id == p.user.id:
+    if user_id == p.user.id:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST, "Change your own password from your profile"
         )
+    user = _managed_user(db, p, user_id, "reset this user's password")
     password = temporary_password()
     user.password_hash = hasher.hash(password)
     user.must_change_password = True
@@ -235,18 +269,18 @@ Audience = Literal["internal", "distributor", "customer"]
 
 
 class RoleIn(BaseModel):
-    name: str = Field(min_length=2, max_length=80)
-    description: str = Field(default="", max_length=500)
+    name: RoleName
+    description: Text500 = ""
     audience: Audience = "internal"
     permissions: list[str] = Field(default=[], max_length=500)
 
 
 class RolePut(BaseModel):
     version: int
-    name: str = Field(min_length=2, max_length=80)
-    description: str = Field(default="", max_length=500)
+    name: RoleName
+    description: Text500 = ""
     permissions: list[str] = Field(max_length=500)
-    reason: str = Field(default="", max_length=500)
+    reason: Text500 = ""
 
 
 def _checked_perms(perms: list[str]) -> list[str]:
@@ -302,10 +336,11 @@ def _name_taken(db: DB, name: str, but=None) -> bool:
 @router.post("/roles", status_code=status.HTTP_201_CREATED)
 def create_role(body: RoleIn, p: require("roles.configure"), db: DB) -> dict:
     perms = _checked_perms(body.permissions)
-    name = body.name.strip()
+    guard(p, perms, "create a role with these permissions")
+    name = body.name
     if _name_taken(db, name):
         raise field_error("name", "A role with this name already exists")
-    role = Role(name=name, description=body.description.strip(), audience=body.audience)
+    role = Role(name=name, description=body.description, audience=body.audience)
     db.add(role)
     db.flush()
     db.add_all([RolePermission(role_id=role.id, permission=x) for x in perms])
@@ -323,7 +358,8 @@ def create_role(body: RoleIn, p: require("roles.configure"), db: DB) -> dict:
 
 
 def _editable_role(db: DB, p: Principal, role_id: uuid.UUID) -> Role:
-    role = db.get(Role, role_id)
+    serialize_access_changes(db)
+    role = db.get(Role, role_id, with_for_update=True)
     if role is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Role not found")
     if role.name in p.roles:
@@ -331,6 +367,7 @@ def _editable_role(db: DB, p: Principal, role_id: uuid.UUID) -> Role:
             status.HTTP_403_FORBIDDEN,
             "You can't change a role you hold. Ask another administrator.",
         )
+    guard(p, _perms_of_roles(db, [role.id]), "change this role")
     return role
 
 
@@ -340,14 +377,15 @@ def update_role(role_id: uuid.UUID, body: RolePut, p: require("roles.configure")
     if role.version != body.version:
         raise stale()
     perms = _checked_perms(body.permissions)
-    name = body.name.strip()
+    guard(p, perms, "give a role these permissions")
+    name = body.name
     if _name_taken(db, name, but=role.id):
         raise field_error("name", "A role with this name already exists")
     old = sorted(
         db.scalars(select(RolePermission.permission).where(RolePermission.role_id == role.id))
     )
     before = {"name": role.name, "description": role.description}
-    role.name, role.description = name, body.description.strip()
+    role.name, role.description = name, body.description
     role.version += 1
     db.execute(delete(RolePermission).where(RolePermission.role_id == role.id))
     db.add_all([RolePermission(role_id=role.id, permission=x) for x in perms])
@@ -374,7 +412,13 @@ def delete_role(role_id: uuid.UUID, p: require("roles.configure"), db: DB) -> No
         raise HTTPException(status.HTTP_409_CONFLICT, "Take this role away from its users first")
     record(db, p.user, "role.delete", "role", role.id, f"{role.name} deleted")
     db.delete(role)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:  # someone was given this role a moment ago
+        db.rollback()
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Take this role away from its users first"
+        ) from None
 
 
 # ---------- audit log ----------
@@ -471,12 +515,25 @@ def export_audit(p: require("audit.export"), db: DB, query: AuditQuery) -> Respo
 
 # ---------- company settings ----------
 
-TIMEZONES = sorted(available_timezones())
+# Region/City zones only: Python also lists aliases such as "Factory" and "posix/…" that browsers
+# reject, and one of those saved would break every date on screen.
+TIMEZONES = sorted(
+    {"UTC"}
+    | {
+        z
+        for z in available_timezones()
+        if "/" in z and not z.startswith(("posix/", "right/", "Etc/"))
+    }
+)
+_TZ_SET = set(TIMEZONES)
 
 
 class CompanyPatch(BaseModel):
     version: int
-    name: str | None = Field(default=None, min_length=2, max_length=160)
+    name: (
+        Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=160)]
+        | None
+    ) = None
     timezone: str | None = Field(default=None, max_length=64)
     currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
 
@@ -495,15 +552,12 @@ def update_company(body: CompanyPatch, p: require("settings.configure"), db: DB)
     c = db.get(Company, 1, with_for_update=True)
     if c.version != body.version:
         raise stale()
-    if body.timezone is not None:
-        try:
-            ZoneInfo(body.timezone)
-        except (ValueError, KeyError):
-            raise field_error("timezone", "Unknown time zone") from None
+    if body.timezone is not None and body.timezone not in _TZ_SET:
+        raise field_error("timezone", "Unknown time zone")
     before = _company(c)
     for k in ("name", "timezone", "currency"):
         if (v := getattr(body, k)) is not None:
-            setattr(c, k, v.strip())
+            setattr(c, k, v)
     c.version += 1
     changes = diff({k: before[k] for k in ("name", "timezone", "currency")},
                    {k: getattr(c, k) for k in ("name", "timezone", "currency")})  # fmt: skip

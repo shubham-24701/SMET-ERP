@@ -10,10 +10,10 @@ prompt (§28), which are supplementary and not part of the original list.
 | # | Checkpoint | Status at end of Phase 1 |
 | --- | --- | --- |
 | 1 | Rate Limiting | Pass for sign-in and password change; public verification in P6 |
-| 4 | Reverse Proxies | Host allow-list passes; proxy hardening in P8 |
+| 4 | Reverse Proxies | Host allow-list passes; proxy hardening in P8, including trusting only the proxy's address for client IPs (until then, clients behind a proxy share one rate-limit bucket) |
 | 11 | Timeouts | Database statement and connect timeouts pass |
 | 14 | Idempotency | Pass for setup and jobs; business operations from P2 |
-| 39 | Race Conditions | Pass for setup and job claims; stock and serials in P2–P3 |
+| 39 | Race Conditions | Pass for setup, job claims and concurrent access changes; stock and serials in P2–P3 |
 | 44 | Backpressure | Request size, page size, export size and hashing limits pass |
 | 59 | Logging | Redaction tests pass |
 | 67 | Secrets Management | Built; secret scan blocked until CI can run (GitHub billing) |
@@ -53,4 +53,5 @@ prompt (§28), which are supplementary and not part of the original list.
 | Dependency review | pip-audit and npm audit clean; run in CI | TEST_RESULTS.md |
 | Error handling | 500s carry a reference, never internals | `test_crashes_answer_calmly_without_internals` |
 
-No penetration test has been performed. "Pass" above means the named automated test passed.
+An independent code review (2026-10-28) found 12 defects; 11 are fixed with regression tests, one
+(proxy client addresses) waits for hosting. See docs/TEST_RESULTS.md. No penetration test has been performed. "Pass" above means the named automated test passed.

@@ -66,7 +66,7 @@ function AddUser({ roles, onDone }: { roles: Role[]; onDone: () => void }) {
     <form onSubmit={submit} noValidate>
       <Field label="Name" name="username" required maxLength={120} error={fields.name} />
       <Field label="Email" name="email" type="email" required error={fields.email} hint="They sign in with this." />
-      {can('users.edit') ? <RolePicker roles={roles} selected={[]} /> : <p className="hint">Roles can be given by someone with permission to edit users.</p>}
+      {can('users.edit') && roles.length ? <RolePicker roles={roles} selected={[]} /> : <p className="hint">Roles can be given later by someone who may edit users and see roles.</p>}
       {fields.role_ids && <p className="field-error">{fields.role_ids}</p>}
       <FormError message={error} />
       <button className="btn btn-primary" disabled={busy}>{busy ? 'Adding…' : 'Add user'}</button>
@@ -84,7 +84,10 @@ function EditUser({ user, roles, onDone }: { user: User; roles: Role[]; onDone: 
     e.preventDefault()
     const f = e.currentTarget
     const body: Record<string, unknown> = { version: user.version, name: f.username.value, reason: f.reason.value }
-    if (!self) { body.role_ids = checked(f, 'role_ids'); body.active = f.active.checked }
+    // Roles are sent only when the picker was shown with the full list; otherwise saving a name
+    // would send an empty list and take every role away.
+    if (!self && roles.length) body.role_ids = checked(f, 'role_ids')
+    if (!self) body.active = f.active.checked
     setFields({})
     void action.run('save', () => api(`/users/${user.id}`, { method: 'PATCH', body }).then(onDone)
       .catch((err) => { setFields(err.fields ?? {}); throw err }))
@@ -95,7 +98,8 @@ function EditUser({ user, roles, onDone }: { user: User; roles: Role[]; onDone: 
         <Field label="Name" name="username" defaultValue={user.name} required maxLength={120} error={fields.name} />
         <p className="muted small">{user.email}</p>
         {self && <p className="notice notice-warning">You can't change your own roles or switch off your own account. Ask another administrator.</p>}
-        <RolePicker roles={roles} selected={user.roles.map((r) => r.id)} disabled={self} />
+        {roles.length ? <RolePicker roles={roles} selected={user.roles.map((r) => r.id)} disabled={self} />
+          : <p className="hint">Roles: {user.roles.map((r) => r.name).join(', ') || 'none'}. Changing them needs permission to see roles.</p>}
         {fields.role_ids && <p className="field-error">{fields.role_ids}</p>}
         <label className="check"><input type="checkbox" name="active" defaultChecked={user.active} disabled={self} /> <span>Account active<span className="hint">Switching it off signs them out at once. Their history stays.</span></span></label>
         <TextareaField label="Reason for the change" name="reason" maxLength={500} hint="Kept in the audit log." />

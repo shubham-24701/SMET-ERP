@@ -2,7 +2,8 @@
 
 Conventions: UUID primary keys; `timestamptz` in UTC; `version` on editable records (optimistic
 locking); history is never rewritten: corrections are new rows (stock movements, audit events).
-Migrations in `backend/migrations/versions/` are the authoritative schema.
+Migrations in `backend/migrations/versions/` are the authoritative schema (0001 foundation; 0002
+hardens the audit trigger and protects `alembic_version`).
 
 ## Phase 1 tables
 

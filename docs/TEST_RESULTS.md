@@ -7,8 +7,8 @@ Every result below was produced by running the command shown. Results that have 
 | Check | Command | Result |
 | --- | --- | --- |
 | Backend lint | `cd backend; uv run ruff check .` | All checks passed |
-| Backend format | `uv run ruff format --check .` | 20 files already formatted |
-| Backend tests | `uv run pytest -q` | **47 passed** in 16 s |
+| Backend format | `uv run ruff format --check .` | clean |
+| Backend tests | `uv run pytest -q` | **53 passed** in 20 s (after the review fixes; 47 before) |
 | Mutation check of the route matrix | removed the permission check in `auth.require`, ran `tests/test_security_matrix.py` | failed as it should (1 failed), restored → 4 passed |
 | Python dependency audit | `uvx pip-audit -r requirements.txt --no-deps` (from `uv export`) | No known vulnerabilities found |
 | Frontend lint | `cd frontend; npm run lint` (oxlint) | clean |
@@ -82,3 +82,23 @@ Windows (the runner's PostgreSQL), frontend checks, Playwright in Edge on Window
 - `test_security_matrix.py :: test_a_user_without_permissions_is_refused_everywhere`
 - `test_security_matrix.py :: test_every_write_needs_the_csrf_token`
 - `test_security_matrix.py :: test_route_list_is_not_empty`
+
+## Independent review (2026-10-28)
+
+A reviewer agent that had not written the code read every file and proved four defects with throwaway
+tests. Findings and fixes:
+
+| # | Severity | Finding | Fix | Regression test |
+| --- | --- | --- | --- | --- |
+| H1 | High | `users.edit` alone could reset an admin's password and sign in as them | Guard: can't manage someone holding guarded powers you lack | `test_a_helpdesk_user_cannot_take_over_an_admin` |
+| H2 | High | `users.edit` could give the System Administrator role to a new account | Guard: can't grant guarded permissions you don't hold | `test_nobody_hands_out_powers_they_dont_hold` |
+| H3 | High | The edit dialog sent an empty role list when roles weren't loaded, removing every role | Roles sent only when the full list is shown | Playwright journey (edit path), code review |
+| M1 | Medium | Two admins removing each other at once could both succeed | Advisory transaction lock on user and role changes | `test_two_admins_removing_each_other_at_once_leave_one` (run 3×) |
+| M2 | Medium | Version checks without a row lock | `SELECT … FOR UPDATE` on the record | covered by the same lock |
+| M3 | Medium | Python lists time zones ("Factory") browsers reject; the app would go blank | Region/City list only, validated; safe date formatting | `test_only_browser_safe_time_zones_are_offered` |
+| L1 | Low | `.env` readable by every account | `chmod 600` when written | checked: mode 600 |
+| L2 | Low | Trigger's owner check could be fooled by a temporary view | `TG_RELID` + `pg_catalog`, pinned `search_path`; app loses TEMPORARY | `test_audit_trigger_functions_pin_their_search_path`; psql: temp table refused |
+| L3 | Low | App login could rewrite `alembic_version` | Migration 0002 revokes it | psql: permission denied |
+| L4 | Low | Behind a proxy all clients share one address (rate limit, audit IP) | **Open**: set trusted proxy addresses at deployment (P8) | — |
+| L5 | Low | Names of only spaces saved as empty | Strip before length checks | `test_blank_names_are_refused` |
+| L6 | Low | Deleting a role assigned a moment earlier gave a 500 | 409 on the foreign-key error | code review |

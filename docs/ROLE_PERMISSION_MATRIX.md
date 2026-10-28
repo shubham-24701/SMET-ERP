@@ -20,6 +20,9 @@ Source of truth: `backend/app/rbac.py` (`PERMISSIONS`, `TEMPLATES`). Roles are c
 
 | Rule | Where |
 | --- | --- |
+| Nobody grants a *guarded* permission they don't hold (any `users.*` or `roles.*`, and any `.configure` or `.sensitive`): not through a role given to a user, nor by creating or widening a role | `admin.guard` |
+| Nobody resets the password of, deactivates, renames or changes the roles of someone who holds a guarded permission they lack | `admin._managed_user` |
+| Changes to users and roles run one at a time (a transaction lock), with the record row-locked, so two administrators can't remove each other at once | `admin.serialize_access_changes` |
 | Nobody changes their own roles or switches off their own account | `admin.update_user` |
 | Nobody edits or deletes a role they hold | `admin._editable_role` |
 | At least one active person keeps both `users.edit` and `roles.configure` (no lock-out) | `admin._ensure_an_admin_remains` |
@@ -30,8 +33,8 @@ Source of truth: `backend/app/rbac.py` (`PERMISSIONS`, `TEMPLATES`). Roles are c
 | The System Administrator template holds no business permission (no approvals, stock or warranty changes) | `test_admin_holds_no_business_permissions` |
 | Self-approval of purchase orders, quotations, adjustments and warranty corrections is refused by default (configurable per document type) | Phase 2 onwards |
 
-Residual risk, accepted for now: an administrator can create a role with an approval permission and
-give it to a second account they control. Mitigation: it is audited, and Management can review role
+Residual risk, accepted for now: an administrator may give business roles (that is their job), so they
+could give an approval role to a second account they control. Mitigation: it is audited, and Management can review role
 changes in the audit log; a two-person rule for permission changes can be added if SMET wants it.
 
 ## Role templates

@@ -44,6 +44,7 @@ Nothing here has been sandbox-tested against an external provider or production-
 | Temporary passwords | Admin-created users and resets get a one-time password shown once; the user must replace it before anything else; changing a password signs out every other session | `test_new_user_must_change_the_temporary_password_first`, Playwright journey |
 | Roles & permissions | Permission catalogue (`module.action`), 17 role templates from the proposal, custom roles, several roles per person, read fresh on every request; template permissions added by later versions never re-add what an admin removed | `test_admin.py` |
 | Escalation guards | Nobody changes their own roles or access, nor edits a role they hold; the last person able to manage users and roles can't be removed; portal roles can't go to staff; the System Administrator holds no business permissions | `test_nobody_changes_their_own_roles_or_a_role_they_hold`, `test_the_last_admin_can_never_be_removed`, `test_admin_holds_no_business_permissions` |
+| Independent review | A separate reviewer found 3 high, 3 medium and 6 low defects (escalation through `users.edit`, roles lost on save, concurrent admin removal, unlocked version checks, a browser-breaking time zone, file and grant hardening). All fixed except proxy client addresses (deployment, P8); each has a regression test | `test_admin.py` review regressions, migration 0002 |
 | Server-side enforcement | Every route checked from the API's own route list: sign-in required, permission required, CSRF required on every write | `test_security_matrix.py` (mutation check recorded in TEST_RESULTS.md) |
 | Audit log | Who, when, what changed (field diffs; permissions added/removed), why, IP, request id. Append-only: the app's login has no UPDATE/DELETE/TRUNCATE on it, and a trigger refuses them even for the schema owner. Filters, CSV export (formula-safe, audited) | `test_platform.py::test_the_app_login_cannot_change_or_delete_audit_events`, `::test_not_even_the_schema_owner_can_rewrite_audit_events` |
 | Optimistic locking | `version` on users, roles, company; a stale save gets 409 | `test_role_changes_are_audited...`, `test_company_settings_validate_and_lock` |
@@ -57,7 +58,7 @@ Nothing here has been sandbox-tested against an external provider or production-
 
 See [docs/TEST_RESULTS.md](docs/TEST_RESULTS.md) for the commands and outputs.
 
-- Backend: 47 pytest tests passed; ruff lint and format clean; pip-audit: no known vulnerabilities.
+- Backend: 53 pytest tests passed; ruff lint and format clean; pip-audit: no known vulnerabilities.
 - Frontend: oxlint clean, TypeScript clean, 5 Vitest tests passed, production build OK, npm audit: 0.
 - Browser: 2 Playwright journeys passed locally (Chromium); CI will run them in Edge on Windows.
 - Design: taste-skill inspector, app rules, 0 FAIL on every screen; remaining WARNs are defended
