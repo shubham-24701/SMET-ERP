@@ -112,7 +112,8 @@ def seed_reference_data(db: Session) -> None:
 # doc_type -> default prefix. SMET can change prefixes and padding (open question 11).
 SEQUENCES = {"purchase_request": "PR", "supplier_quote": "SQ", "purchase_order": "PO",
              "goods_receipt": "GRN", "supplier_return": "SRN", "adjustment": "ADJ",
-             "stock_count": "CNT", "assembly_order": "AO", "serial": "SMET"}  # fmt: skip
+             "stock_count": "CNT", "assembly_order": "AO", "serial": "SMET", "enquiry": "ENQ",
+             "quotation": "QT", "sales_order": "SO", "project": "PRJ", "dispatch": "DN"}  # fmt: skip
 
 
 def next_number(db: Session, doc_type: str) -> str:
@@ -144,6 +145,12 @@ RULE_DEFAULTS: dict = {
     "po_auto_approve_up_to": None,
     "po_self_approval": False,  # may the person who drafted or submitted a PO approve it?
     "adjustment_self_approval": False,  # may the person who asked for a correction approve it?
+    # Quotations in the company currency at or below this total, with no line discount above
+    # quote_max_discount_pct, are approved on submission; null = every quotation needs approval.
+    "quote_auto_approve_up_to": None,
+    "quote_max_discount_pct": 0,
+    "quote_self_approval": False,
+    "quote_valid_days": 30,  # default validity of a new quotation (question 10b)
 }
 
 
@@ -158,6 +165,14 @@ class RulesPatch(BaseModel):
     ) = None
     po_self_approval: bool | None = None
     adjustment_self_approval: bool | None = None
+    quote_auto_approve_up_to: (
+        Annotated[Decimal, Field(ge=0, max_digits=14, decimal_places=2)] | None
+    ) = None
+    quote_max_discount_pct: (
+        Annotated[Decimal, Field(ge=0, le=100, max_digits=5, decimal_places=2)] | None
+    ) = None
+    quote_self_approval: bool | None = None
+    quote_valid_days: int | None = Field(default=None, ge=1, le=365)
     reason: Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)] = ""
 
 
@@ -175,7 +190,7 @@ def update_rules(body: RulesPatch, p: require("settings.configure"), db: DB) -> 
     after = dict(before)
     for k in body.model_fields_set - {"version", "reason"}:
         v = getattr(body, k)
-        if v is None and k != "po_auto_approve_up_to":
+        if v is None and k not in ("po_auto_approve_up_to", "quote_auto_approve_up_to"):
             continue
         after[k] = str(v) if isinstance(v, Decimal) else v
     c.rules = {k: after[k] for k in RULE_DEFAULTS}
@@ -611,7 +626,7 @@ PURPOSE_LABEL = {"available": "Available stock", "inspection": "Awaiting inspect
 # Every new warehouse gets one area of each kind the workflows need; SMET adds racks and bays.
 STANDARD_LOCATIONS = [("STORE", "Main store", "available"), ("INSP", "Receiving inspection", "inspection"),
                       ("QUAR", "Quarantine", "quarantine"), ("REJ", "Rejected goods", "rejected"),
-                      ("ASSY", "Assembly floor", "assembly")]  # fmt: skip
+                      ("ASSY", "Assembly floor", "assembly"), ("RET", "Customer returns", "returns")]  # fmt: skip
 
 
 class WarehouseIn(BaseModel):

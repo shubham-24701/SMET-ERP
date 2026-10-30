@@ -473,6 +473,10 @@ class Serial(Base):
     assembly_order_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("assembly_orders.id"), index=True
     )
+    party_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("parties.id"), index=True
+    )  # holder after dispatch
+    site_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sites.id"), index=True)
     version: Mapped[int] = mapped_column(Integer, server_default="1")
     created_at: Mapped[datetime] = _ts()
 
@@ -727,3 +731,346 @@ class Inspection(Base):
     observations: Mapped[str] = mapped_column(Text, server_default="")
     inspector_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     at: Mapped[datetime] = _ts()
+
+
+# ======================= Phase 4: sales, projects, dispatch =======================
+
+
+class Enquiry(Base):
+    """What a customer asked for, before any price. Lines are informal (an item or free text)."""
+
+    __tablename__ = "enquiries"
+    id: Mapped[uuid.UUID] = _id()
+    number: Mapped[str] = mapped_column(String(30), unique=True)
+    customer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("parties.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(10))  # product|project
+    status: Mapped[str] = mapped_column(
+        String(10), server_default="open"
+    )  # open|quoted|lost|closed
+    contact: Mapped[str] = mapped_column(String(160), server_default="")
+    needed_by: Mapped[date | None] = mapped_column(Date)
+    lines: Mapped[list] = mapped_column(
+        JSONB, server_default=text("'[]'::jsonb")
+    )  # [{item_id?, description, qty}]
+    notes: Mapped[str] = mapped_column(Text, server_default="")
+    project_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("projects.id"))
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = _ts()
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+
+
+class Quotation(Base):
+    """A customer quotation; its content lives in revisions. Only the latest revision is live."""
+
+    __tablename__ = "quotations"
+    id: Mapped[uuid.UUID] = _id()
+    number: Mapped[str] = mapped_column(String(30), unique=True)
+    customer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("parties.id"), index=True)
+    enquiry_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("enquiries.id"))
+    project_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("projects.id"), index=True)
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = _ts()
+
+
+class QuotationRevision(Base):
+    """Editable only as a draft. Once submitted it never changes: a change is a new revision, and
+    the old one is marked revised."""
+
+    __tablename__ = "quotation_revisions"
+    __table_args__ = (UniqueConstraint("quotation_id", "rev"),)
+    id: Mapped[uuid.UUID] = _id()
+    quotation_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("quotations.id"), index=True)
+    rev: Mapped[int] = mapped_column(Integer)
+    # draft|submitted|approved|rejected|accepted|declined|revised
+    status: Mapped[str] = mapped_column(String(10), server_default="draft", index=True)
+    currency: Mapped[str] = mapped_column(String(3))
+    valid_until: Mapped[date | None] = mapped_column(Date)
+    terms: Mapped[str] = mapped_column(Text, server_default="")
+    scope_notes: Mapped[str] = mapped_column(Text, server_default="")
+    installation_date: Mapped[date | None] = mapped_column(Date)
+    commissioning_date: Mapped[date | None] = mapped_column(Date)
+    handover_date: Mapped[date | None] = mapped_column(Date)
+    editors: Mapped[list[uuid.UUID]] = mapped_column(ARRAY(Uuid), server_default="{}")
+    submitted_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision_reason: Mapped[str] = mapped_column(String(500), server_default="")
+    # the customer's answer, as recorded by SMET
+    customer_answer_by: Mapped[str] = mapped_column(String(160), server_default="")
+    customer_ref: Mapped[str] = mapped_column(String(60), server_default="")
+    customer_answer_at: Mapped[date | None] = mapped_column(Date)
+    answer_recorded_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+    created_at: Mapped[datetime] = _ts()
+
+
+class QuotationLine(Base):
+    __tablename__ = "quotation_lines"
+    __table_args__ = (
+        CheckConstraint("discount_pct >= 0 AND discount_pct <= 100", name="quote_discount_range"),
+    )
+    id: Mapped[uuid.UUID] = _id()
+    revision_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("quotation_revisions.id", ondelete="CASCADE"), index=True
+    )
+    line_type: Mapped[str] = mapped_column(
+        String(14)
+    )  # battery|accessory|installation|commissioning|amc|other
+    item_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("items.id"))
+    description: Mapped[str] = mapped_column(String(300), server_default="")
+    qty: Mapped[float] = mapped_column(QTY)
+    unit_price: Mapped[float] = mapped_column(PRICE)
+    discount_pct: Mapped[float] = mapped_column(Numeric(5, 2), server_default="0")
+    sort: Mapped[int] = mapped_column(Integer, server_default="0")
+
+
+class SalesOrder(Base):
+    __tablename__ = "sales_orders"
+    id: Mapped[uuid.UUID] = _id()
+    number: Mapped[str] = mapped_column(String(30), unique=True)
+    customer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("parties.id"), index=True)
+    # one order per accepted revision: converting twice is refused by the database
+    quotation_revision_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("quotation_revisions.id"), unique=True
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("projects.id"), index=True)
+    status: Mapped[str] = mapped_column(
+        String(18), server_default="open", index=True
+    )  # open|partly_dispatched|dispatched|closed|cancelled
+    currency: Mapped[str] = mapped_column(String(3))
+    customer_ref: Mapped[str] = mapped_column(String(60), server_default="")
+    delivery_date: Mapped[date | None] = mapped_column(Date)
+    delivery_address: Mapped[str] = mapped_column(Text, server_default="")
+    notes: Mapped[str] = mapped_column(Text, server_default="")
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = _ts()
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+
+
+class SalesOrderLine(Base):
+    """Goods lines (battery, accessory) are dispatched; service lines are delivered in Phases 5–6."""
+
+    __tablename__ = "sales_order_lines"
+    __table_args__ = (
+        CheckConstraint("qty_dispatched >= 0 AND qty_dispatched <= qty", name="so_line_dispatched"),
+    )
+    id: Mapped[uuid.UUID] = _id()
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("sales_orders.id", ondelete="CASCADE"), index=True
+    )
+    line_type: Mapped[str] = mapped_column(String(14))
+    item_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("items.id"))
+    description: Mapped[str] = mapped_column(String(300), server_default="")
+    qty: Mapped[float] = mapped_column(QTY)
+    unit_price: Mapped[float] = mapped_column(PRICE)
+    discount_pct: Mapped[float] = mapped_column(Numeric(5, 2), server_default="0")
+    qty_dispatched: Mapped[float] = mapped_column(
+        QTY, server_default="0"
+    )  # on the road or delivered
+    qty_delivered: Mapped[float] = mapped_column(
+        QTY, server_default="0"
+    )  # accepted by the customer
+    sort: Mapped[int] = mapped_column(Integer, server_default="0")
+
+
+class Project(Base):
+    __tablename__ = "projects"
+    id: Mapped[uuid.UUID] = _id()
+    number: Mapped[str] = mapped_column(String(30), unique=True)
+    name: Mapped[str] = mapped_column(String(160))
+    customer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("parties.id"), index=True)
+    status: Mapped[str] = mapped_column(
+        String(10), server_default="planning"
+    )  # planning|active|on_hold|completed|cancelled
+    scope: Mapped[str] = mapped_column(Text, server_default="")
+    contacts: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    manager_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    start_date: Mapped[date | None] = mapped_column(Date)
+    end_date: Mapped[date | None] = mapped_column(Date)
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = _ts()
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+
+
+class Site(Base):
+    """A place where batteries go. The survey is kept on the site: date, who, findings and the
+    technical requirements found (key/value)."""
+
+    __tablename__ = "sites"
+    id: Mapped[uuid.UUID] = _id()
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    name: Mapped[str] = mapped_column(String(160))
+    address: Mapped[str] = mapped_column(Text, server_default="")
+    contact: Mapped[str] = mapped_column(String(160), server_default="")
+    survey_date: Mapped[date | None] = mapped_column(Date)
+    surveyed_by: Mapped[str] = mapped_column(String(120), server_default="")
+    survey_notes: Mapped[str] = mapped_column(Text, server_default="")
+    requirements: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+    created_at: Mapped[datetime] = _ts()
+
+
+class Milestone(Base):
+    __tablename__ = "project_milestones"
+    id: Mapped[uuid.UUID] = _id()
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    site_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sites.id"))
+    kind: Mapped[str] = mapped_column(
+        String(16)
+    )  # material_ready|delivery|installation|commissioning|handover|other
+    title: Mapped[str] = mapped_column(String(160))
+    due_date: Mapped[date | None] = mapped_column(Date)
+    done_at: Mapped[date | None] = mapped_column(Date)
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+
+
+class ProjectTask(Base):
+    __tablename__ = "project_tasks"
+    id: Mapped[uuid.UUID] = _id()
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    site_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sites.id"))
+    title: Mapped[str] = mapped_column(String(200))
+    assignee_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), index=True)
+    due_date: Mapped[date | None] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(8), server_default="open")  # open|done
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+    created_at: Mapped[datetime] = _ts()
+
+
+class ProjectChange(Base):
+    """A change to scope, quantities or schedule, decided by someone with projects.approve."""
+
+    __tablename__ = "project_changes"
+    id: Mapped[uuid.UUID] = _id()
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(10))  # scope|quantity|schedule
+    description: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(
+        String(10), server_default="pending"
+    )  # pending|approved|rejected
+    requested_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision_reason: Mapped[str] = mapped_column(String(500), server_default="")
+    created_at: Mapped[datetime] = _ts()
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+
+
+class ProjectNote(Base):
+    """Progress notes and pending actions (append-only in use: notes are never edited)."""
+
+    __tablename__ = "project_notes"
+    id: Mapped[uuid.UUID] = _id()
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    site_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sites.id"))
+    text: Mapped[str] = mapped_column(Text)
+    pending_action: Mapped[bool] = mapped_column(Boolean, server_default=false())
+    author_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = _ts()
+
+
+class SizingRule(Base):
+    """A battery-sizing formula SMET supplies (inputs, an expression, a result). Until SMET marks
+    one confirmed, its results are suggestions an engineer must accept; none is shipped."""
+
+    __tablename__ = "sizing_rules"
+    id: Mapped[uuid.UUID] = _id()
+    name: Mapped[str] = mapped_column(String(120), unique=True)
+    description: Mapped[str] = mapped_column(Text, server_default="")
+    inputs: Mapped[list] = mapped_column(
+        JSONB, server_default=text("'[]'::jsonb")
+    )  # [{name, label, unit}]
+    expression: Mapped[str] = mapped_column(String(500))
+    result_unit: Mapped[str] = mapped_column(String(20), server_default="batteries")
+    confirmed: Mapped[bool] = mapped_column(Boolean, server_default=false())
+    active: Mapped[bool] = mapped_column(Boolean, server_default=true())
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+
+
+class RequirementSheet(Base):
+    """Battery requirements for a project (or one site). Approved sheets never change: a change is
+    a new version."""
+
+    __tablename__ = "requirement_sheets"
+    __table_args__ = (UniqueConstraint("project_id", "version_no"),)
+    id: Mapped[uuid.UUID] = _id()
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    site_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sites.id"))
+    version_no: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(
+        String(10), server_default="draft"
+    )  # draft|submitted|approved|rejected|superseded
+    notes: Mapped[str] = mapped_column(Text, server_default="")
+    prepared_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    editors: Mapped[list[uuid.UUID]] = mapped_column(ARRAY(Uuid), server_default="{}")
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision_reason: Mapped[str] = mapped_column(String(500), server_default="")
+    created_at: Mapped[datetime] = _ts()
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+
+
+class RequirementLine(Base):
+    """One requirement. `calculation` keeps the rule, inputs and result shown to the engineer, so
+    the approved quantity can always be traced back."""
+
+    __tablename__ = "requirement_lines"
+    id: Mapped[uuid.UUID] = _id()
+    sheet_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("requirement_sheets.id", ondelete="CASCADE"), index=True
+    )
+    item_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("items.id"))
+    configuration: Mapped[str] = mapped_column(String(300), server_default="")
+    qty: Mapped[float] = mapped_column(QTY)
+    calculation: Mapped[dict | None] = mapped_column(JSONB)
+    notes: Mapped[str] = mapped_column(String(300), server_default="")
+    sort: Mapped[int] = mapped_column(Integer, server_default="0")
+
+
+class Dispatch(Base):
+    """planned → dispatched → delivered, or cancelled. Cancelling after dispatch returns the stock
+    with new movements; the record stays."""
+
+    __tablename__ = "dispatches"
+    id: Mapped[uuid.UUID] = _id()
+    number: Mapped[str] = mapped_column(String(30), unique=True)
+    order_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sales_orders.id"), index=True)
+    site_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sites.id"))
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("warehouses.id"))
+    status: Mapped[str] = mapped_column(String(10), server_default="planned", index=True)
+    planned_date: Mapped[date | None] = mapped_column(Date)
+    destination: Mapped[str] = mapped_column(Text, server_default="")
+    delivery_contact: Mapped[str] = mapped_column(String(160), server_default="")
+    transporter: Mapped[str] = mapped_column(String(120), server_default="")
+    vehicle: Mapped[str] = mapped_column(String(60), server_default="")
+    dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    received_by: Mapped[str] = mapped_column(String(160), server_default="")
+    delivered_on: Mapped[date | None] = mapped_column(Date)
+    delivery_notes: Mapped[str] = mapped_column(Text, server_default="")
+    cancel_reason: Mapped[str] = mapped_column(String(500), server_default="")
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = _ts()
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+
+
+class DispatchLine(Base):
+    __tablename__ = "dispatch_lines"
+    __table_args__ = (
+        CheckConstraint("qty_rejected + qty_damaged <= qty", name="dispatch_line_discrepancy"),
+    )
+    id: Mapped[uuid.UUID] = _id()
+    dispatch_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("dispatches.id", ondelete="CASCADE"), index=True
+    )
+    order_line_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sales_order_lines.id"))
+    item_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("items.id"))
+    qty: Mapped[float] = mapped_column(QTY)
+    lot: Mapped[str] = mapped_column(String(60), server_default="")
+    location_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("locations.id"))  # picked from
+    serials: Mapped[list[str]] = mapped_column(ARRAY(String(60)), server_default="{}")
+    qty_rejected: Mapped[float] = mapped_column(QTY, server_default="0")  # refused, came back
+    qty_damaged: Mapped[float] = mapped_column(QTY, server_default="0")  # accepted but damaged
+    rejected_serials: Mapped[list[str]] = mapped_column(ARRAY(String(60)), server_default="{}")
+    from_reserved: Mapped[float] = mapped_column(QTY, server_default="0")  # given back if cancelled
+    note: Mapped[str] = mapped_column(String(300), server_default="")
