@@ -21,7 +21,7 @@ const JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(
 const day = () => new Date().toLocaleDateString('en-CA')
 
 test('warranty by policy at handover, AMC visits, public service request, reset code and closure', async ({ page, browser }) => {
-  test.setTimeout(240_000)
+  test.setTimeout(480_000) // the Windows CI runner is several times slower than a laptop
   const s = String(Date.now()).slice(-5)
   await signInAsAdmin(page)
   const people = await seedPeople(page)
