@@ -78,11 +78,15 @@ test('batteries delivered to a site are installed, commissioned and traced to a 
   await expect(d).toBeHidden()
   await chen.getByRole('button', { name: 'Add the 3 batteries placed in these banks' }).click()
   await chen.getByRole('checkbox', { name: `Terminals torqued ${s}` }).check()
+  // A slow reload after each save (as on a busy network) must not leave the form with an old version.
+  const slow = /\/api\/v1\/visits\/[^/]+$/
+  await chen.route(slow, async (r) => { if (r.request().method() === 'GET') await new Promise((ok) => setTimeout(ok, 1500)); await r.continue().catch(() => {}) }) // superseded requests are fine
   await chen.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(chen.getByText('Photographs: 0 of 1')).toBeVisible()
   chen.once('dialog', (x) => x.accept())
   await chen.getByRole('button', { name: 'Save and complete' }).click()
   await expect(chen.getByText(/Not ready to complete: Photographs: 0 of 1/)).toBeVisible() // refused, and the form still works after
+  await chen.unroute(slow)
   await chen.getByLabel('File').setInputFiles({ name: 'rack.jpg', mimeType: 'image/jpeg', buffer: JPEG })
   await chen.getByLabel('Caption').fill('Rack after installation')
   await chen.getByRole('button', { name: 'Add', exact: true }).click()

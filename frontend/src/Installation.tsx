@@ -168,10 +168,11 @@ function RecordForm({ v, onSaved }: { v: Visit; onSaved: () => void }) {
   const action = useAction(onSaved)
   const placed = v.banks.flatMap((b) => b.positions.map((p) => p.serial))
   const form = useRef<HTMLFormElement>(null)
+  const lastSaved = useRef(0) // our own save's version, in case the page hasn't reloaded yet
   const body = () => {
     const fd = new FormData(form.current!)
     return {
-      version: v.version, received_serials: serialList(received), observations: fd.get('observations'), access_notes: fd.get('access_notes'),
+      version: Math.max(v.version, lastSaved.current), received_serials: serialList(received), observations: fd.get('observations'), access_notes: fd.get('access_notes'),
       site_ready: ready === '' ? null : ready === 'yes',
       checklist: Object.entries(checks).map(([check_id, c]) => ({ check_id, ...c })),
       readings: Object.entries(readings).filter(([, x]) => x !== '').map(([check_id, x]) => ({ check_id, value: num(x) })),
@@ -181,6 +182,7 @@ function RecordForm({ v, onSaved }: { v: Visit; onSaved: () => void }) {
   }
   const save = async () => {
     const saved = await api<Visit>(`/visits/${v.id}/record`, { method: 'PUT', body: body() })
+    lastSaved.current = saved.version
     setEdits({})
     setAdded([])
     return saved
