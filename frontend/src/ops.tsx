@@ -22,6 +22,9 @@ export const money = (v: number, currency: string) =>
 export const day = (iso: string | null | undefined) =>
   iso ? new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
 
+/** Today in the browser's own time zone, as yyyy-mm-dd (UTC would be yesterday just after midnight in Dubai). */
+export const today = () => new Date().toLocaleDateString('en-CA')
+
 /** A fresh key per form: the server records a repeated submit (double click, retry) only once. */
 export const newKey = () => crypto.randomUUID().replaceAll('-', '')
 
@@ -39,12 +42,16 @@ const TONE: Record<string, Tone> = {
   released: 'info', in_progress: 'warning', completed: 'success', retired: 'neutral', available: 'success',
   awaiting_inspection: 'info', on_hold: 'warning', under_assembly: 'info', rework: 'warning', issued: 'info',
   consumed: 'neutral', written_off: 'danger', returned_to_supplier: 'neutral', used: 'neutral', selected: 'success',
-  declined: 'neutral', passed: 'success',
+  declined: 'neutral', passed: 'success', quoted: 'info', lost: 'neutral', accepted: 'success', revised: 'neutral',
+  expired: 'warning', partly_dispatched: 'warning', dispatched: 'info', delivered: 'success', planning: 'neutral',
+  planned: 'neutral', superseded: 'neutral', done: 'success',
 }
 const WORDS: Record<string, string> = {
   partly_received: 'Partly received', awaiting_inspection: 'Awaiting inspection', on_hold: 'On hold',
   under_assembly: 'Built, awaiting inspection', in_progress: 'In progress', written_off: 'Written off',
   returned_to_supplier: 'Returned to supplier', issued: 'On the assembly floor', submitted: 'Waiting for approval',
+  partly_dispatched: 'Partly dispatched', declined: 'Declined by customer', accepted: 'Accepted by customer',
+  dispatched: 'On the way',
 }
 export const words = (s: string) => WORDS[s] ?? s.charAt(0).toUpperCase() + s.slice(1).replaceAll('_', ' ')
 

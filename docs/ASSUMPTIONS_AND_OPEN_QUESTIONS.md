@@ -27,6 +27,10 @@ commissioning".
 | A13 | Final inspection applies a limit only after SMET marks it confirmed; a battery model with no checklist or readings set up can't pass at all (question 4) | — |
 | A14 | Purchased battery units and serialised parts are registered by serial number on arrival; the supplier's serial is kept beside SMET's (questions 1b, 3) | Lot numbers are enough for some parts |
 | A15 | A delivery larger than what is outstanding is refused, so the order is changed first (question 28) | SMET accepts a tolerance |
+| A16 | Every quotation needs an approver; nobody who prepared or submitted it approves it. An automatic-approval limit (total and maximum discount) can be switched on (question 10a, 10c) | SMET sets limits |
+| A17 | A quotation is valid for 30 days unless a date is typed (question 10b) | SMET's usual validity differs |
+| A18 | Battery quantities on a requirement sheet are typed in and approved by an engineer; no sizing formula is built in (question 15) | SMET supplies its rules, entered under Sizing rules |
+| A19 | Goods refused at delivery come back into a customer-returns area, on hold, and are owed again on the order (question 23) | SMET handles refusals differently |
 
 Technical choices (database, sign-in mechanism) are recorded for developers in
 [engineering/ARCHITECTURE_DECISIONS.md](engineering/ARCHITECTURE_DECISIONS.md).
@@ -122,3 +126,5 @@ safe default, but they must be answered before the system is used for real.
     a. Who plans assembly orders, and who may make a new bill of materials version active?
        *(Default: the Operations Manager role for both; Quality sets inspection limits.)*
     b. During rework, are components ever swapped (for example a weak cell)? If so, which ones?
+30. **Orders without a quotation (Phase 4).** Do distributors place repeat orders at agreed prices without a
+    new quotation? *(Default: every sales order comes from an accepted quotation.)*

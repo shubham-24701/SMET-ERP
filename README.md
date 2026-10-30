@@ -4,10 +4,11 @@ Battery Operations ERP for Smart Mechanical Equipment Trading LLC (SMET), built 
 the proposal *Secure Hive – Project Proposal – SMET v1.0*. One shared record for every battery, from
 supplier receipt through assembly, stock, sales, projects, dispatch, installation, warranty and service.
 
-**Status:** Phases 1–3 (0.2.0). Foundation (sign-in, users, configurable roles, append-only audit
+**Status:** Phases 1–4 (0.3.0). Foundation (sign-in, users, configurable roles, append-only audit
 log, settings); master data, purchasing and goods receipt with inspection, the stock ledger with
 reservations, counts and corrections; bills of materials, assembly orders, serial numbers and the
-final-inspection gate. Sales, projects, installation, warranty and service follow phase by phase; see
+final-inspection gate; enquiries, quotations with revisions, sales orders, projects with engineer-approved
+requirement sheets, and dispatch with delivery notes. Installation, warranty and service follow; see
 [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md).
 
 ## Stack

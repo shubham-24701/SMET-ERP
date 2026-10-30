@@ -1,5 +1,5 @@
 import {
-  Activity, ArrowLeftRight, Barcode, Boxes, Building2, ClipboardCheck, ClipboardList, Factory, FileText, LayoutDashboard,
+  Activity, ArrowLeftRight, Barcode, Briefcase, Calculator, FileSignature, Inbox, ReceiptText, Send, Boxes, Building2, ClipboardCheck, ClipboardList, Factory, FileText, LayoutDashboard,
   ListTree, Package, PackageCheck, ScrollText, Settings2, ShieldCheck, ShoppingCart, Truck, Users, Warehouse, type LucideIcon,
 } from 'lucide-react'
 
@@ -9,6 +9,22 @@ export type NavItem = { path: string; label: string; icon: LucideIcon; perm?: st
 // Business modules join this list as each phase delivers them; nothing here is a placeholder.
 export const NAV: { group: string; items: NavItem[] }[] = [
   { group: 'Overview', items: [{ path: '/', label: 'Dashboard', icon: LayoutDashboard }] },
+  {
+    group: 'Sales',
+    items: [
+      { path: '/sales/enquiries', label: 'Enquiries', icon: Inbox, perm: 'sales.view' },
+      { path: '/sales/quotations', label: 'Quotations', icon: FileSignature, perm: 'sales.view' },
+      { path: '/sales/orders', label: 'Sales orders', icon: ReceiptText, perm: 'sales.view' },
+      { path: '/dispatch', label: 'Dispatch', icon: Send, perm: 'dispatch.view' },
+    ],
+  },
+  {
+    group: 'Projects',
+    items: [
+      { path: '/projects', label: 'Projects', icon: Briefcase, perm: 'projects.view' },
+      { path: '/projects/rules', label: 'Sizing rules', icon: Calculator, perm: 'projects.view' },
+    ],
+  },
   {
     group: 'Purchasing',
     items: [
