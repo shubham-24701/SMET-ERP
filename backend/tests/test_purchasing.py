@@ -62,7 +62,7 @@ def test_items_keep_what_history_depends_on(team):
 def test_new_warehouses_get_every_area_the_workflows_need(team):
     a, _ = team
     w = warehouse(a)
-    assert set(w["loc"]) == {"available", "inspection", "quarantine", "rejected", "assembly"}
+    assert set(w["loc"]) == {"available", "inspection", "quarantine", "rejected", "assembly", "returns"}
 
 
 def test_document_numbers_follow_on_and_can_be_reformatted(team, admin):
