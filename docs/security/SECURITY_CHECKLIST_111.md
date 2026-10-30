@@ -12,8 +12,8 @@ prompt (§28), which are supplementary and not part of the original list.
 | 1 | Rate Limiting | Pass for sign-in and password change; public verification in P6 |
 | 4 | Reverse Proxies | Host allow-list passes; proxy hardening in P8, including trusting only the proxy's address for client IPs (until then, clients behind a proxy share one rate-limit bucket) |
 | 11 | Timeouts | Database statement and connect timeouts pass |
-| 14 | Idempotency | Pass for setup and jobs; business operations from P2 |
-| 39 | Race Conditions | Pass for setup, job claims and concurrent access changes; stock and serials in P2–P3 |
+| 14 | Idempotency | Pass for setup, jobs and every stock-changing operation (operation keys) |
+| 39 | Race Conditions | Pass for setup, job claims, access changes, reservations of the last unit and serial reuse |
 | 44 | Backpressure | Request size, page size, export size and hashing limits pass |
 | 59 | Logging | Redaction tests pass |
 | 67 | Secrets Management | Built; secret scan blocked until CI can run (GitHub billing) |
@@ -45,9 +45,9 @@ prompt (§28), which are supplementary and not part of the original list.
 | Account enumeration | Same message and timing for unknown email and wrong password (dummy hash) | `test_wrong_password_is_generic_and_audited` |
 | Account recovery | Admin-issued one-time password, must be changed at first sign-in; email reset when email exists (P7) | `test_new_user_must_change…` |
 | MFA | Not built; extension point is the session layer. Decision in P8 | — |
-| Object-level authorization / IDOR | From P2 every record query is scoped by permission and party | P2+ |
-| Approval separation | Self-approval refused by default from P2 | P2+ |
-| Audit integrity | Append-only at database level, for the app and the owner | `test_platform.py` |
+| Object-level authorization / IDOR | Staff records are company-wide by design (one company); every route checks its permission (route matrix). Party scoping arrives with the portals (P6) | `test_security_matrix.py` |
+| Approval separation | Purchase orders and stock corrections can't be approved by the person who raised them (configurable, off) | `test_the_whole_purchase_journey…`, `test_corrections_need_a_second_person…` |
+| Audit integrity | Audit log and stock ledger append-only at database level, for the app and the owner | `test_platform.py`, `test_the_ledger_cannot_be_rewritten_by_the_app` |
 | File uploads | Not built (P7): type sniffing, size limits, storage outside the web root, permission-checked downloads | — |
 | Public endpoint data minimisation | Health only in P1; verification portal returns approved fields only (P6) | — |
 | Dependency review | pip-audit and npm audit clean; run in CI | TEST_RESULTS.md |

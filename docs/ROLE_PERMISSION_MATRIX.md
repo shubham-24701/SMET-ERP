@@ -31,7 +31,10 @@ Source of truth: `backend/app/rbac.py` (`PERMISSIONS`, `TEMPLATES`). Roles are c
 | Only known permissions can be granted | `admin._checked_perms` |
 | Every role and user change is audited with the permissions added and removed and the reason given | `audit_events` |
 | The System Administrator template holds no business permission (no approvals, stock or warranty changes) | `test_admin_holds_no_business_permissions` |
-| Self-approval of purchase orders, quotations, adjustments and warranty corrections is refused by default (configurable per document type) | Phase 2 onwards |
+| Nobody approves a purchase order they raised or submitted, nor a stock correction they asked for (switches in Rules & numbering, off by default) | `procurement._decide`, `inventory._decidable` |
+| Accepting, rejecting or holding received goods needs `quality.create`, so a storekeeper records a delivery and quality decides | `procurement.receive` |
+| The System Administrator holds every `.configure` permission (so it can grant them) and the views it configures, but no permission that approves, moves or inspects anything | `rbac.ADMIN_PERMS`, `test_admin_holds_no_business_permissions` |
+| Self-approval of quotations and warranty corrections is refused by default | Phases 4 and 6 |
 
 Residual risk, accepted for now: an administrator may give business roles (that is their job), so they
 could give an approval role to a second account they control. Mitigation: it is audited, and Management can review role
@@ -41,13 +44,13 @@ changes in the audit log; a two-person rule for permission changes can be added 
 
 | Role | For | Purpose (from the proposal) | Phase 1 permissions | Gains in |
 | --- | --- | --- | --- | --- |
-| System Administrator | Staff | Users, roles, settings, technical configuration; no business approvals | all Phase 1 permissions below | each phase: configuration only |
-| Management / Operations Manager | Staff | Dashboards and visibility across modules, specifically granted approvals | view users, roles, audit, settings, system | 2–7: view everywhere, dashboards |
-| Procurement Officer | Staff | Suppliers, purchase requests, supplier quotations, POs, receipt tracking | — | 2 |
-| Procurement Approver | Staff | Approves or rejects POs with reasons | — | 2 |
-| Warehouse / Inventory Officer | Staff | Receipts, transfers, reservations, counts, permitted adjustments | — | 2 |
-| Assembly Technician | Staff | Assigned assembly orders, consumption, checklists | — | 3 |
-| Quality Inspector | Staff | Inspections, pass / hold / rework, approved test parameters | — | 3 |
+| System Administrator | Staff | Users, roles, settings, technical configuration; no business approvals | all Phase 1 permissions; every `.configure`; items.view, warehouses.view, bom.view | each phase: configuration only |
+| Management / Operations Manager | Staff | Dashboards and visibility across modules, specifically granted approvals | every `.view`, stock.export, adjustments.approve, assembly.create, bom.configure (defaults A9 and question 29) | 2–7: view everywhere, dashboards |
+| Procurement Officer | Staff | Suppliers, purchase requests, supplier quotations, POs, receipt tracking | items.view/edit, parties.view/edit, purchasing.view/create, stock.view, warehouses.view (Phase 2) | 2 |
+| Procurement Approver | Staff | Approves or rejects POs with reasons | items.view, parties.view, purchasing.view/approve, stock.view (Phase 2) | 2 |
+| Warehouse / Inventory Officer | Staff | Receipts, transfers, reservations, counts, permitted adjustments | items.view, parties.view, warehouses.view, purchasing.view, receipts.create, stock.view/create/export, adjustments.create, assembly.view/edit (issue materials) | 2 |
+| Assembly Technician | Staff | Assigned assembly orders, consumption, checklists | items.view, warehouses.view, bom.view, assembly.view/edit, stock.view | 3 |
+| Quality Inspector | Staff | Inspections, pass / hold / rework, approved test parameters | items.view, warehouses.view, purchasing.view, bom.view, assembly.view, stock.view, quality.create/configure | 3 |
 | Sales Officer | Staff | Enquiries, quotations, customers, sales orders | — | 4 |
 | Sales Approver | Staff | Commercial approvals, discounts, quotation approval | — | 4 |
 | Project Manager | Staff | Projects, site requirements, milestones, documents, installation coordination | — | 4–5 |
@@ -77,3 +80,20 @@ changes in the audit log; a two-person rule for permission changes can be added 
 
 Signed in without any permission, a person can still see their own profile and change their own
 password (`/auth/me`, `/auth/password`).
+
+## Phase 2–3 permission catalogue
+
+| Permission | Allows |
+| --- | --- |
+| `items.view` / `items.edit` / `items.configure` | See items; add and change them; manage units of measure |
+| `parties.view` / `parties.edit` | See suppliers, customers, distributors and dealers; add and change them and their supplied items |
+| `warehouses.view` / `warehouses.configure` | See warehouses and locations; add and change them |
+| `purchasing.view` | See purchase requests, quotations, orders, receipts and returns |
+| `purchasing.create` | Raise requests, record quotations, draft, submit, cancel and close orders, return goods to suppliers |
+| `purchasing.approve` | Approve or reject submitted orders (not your own) |
+| `receipts.create` | Record deliveries |
+| `stock.view` / `stock.create` / `stock.export` | See stock, movements, serials, reservations, counts; move, reserve, release, count; download CSV |
+| `adjustments.create` / `adjustments.approve` | Ask for a stock correction; approve or reject one (not your own) |
+| `bom.view` / `bom.configure` | See bills of materials; draft versions and make them active |
+| `assembly.view` / `assembly.create` / `assembly.edit` | See orders; plan, release, complete, cancel; issue, build and return materials |
+| `quality.create` / `quality.configure` | Decide on received goods and inspect finished batteries; set test parameters, limits and checklists |

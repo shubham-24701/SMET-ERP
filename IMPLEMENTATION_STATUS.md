@@ -1,7 +1,8 @@
 # Implementation status
 
-**Updated:** 2026-10-28 · **Version:** 0.1.0 · **Current phase:** 1 (foundation) built and verified
-locally; CI first run pending; Phase 2 starts on the owner's go-ahead.
+**Updated:** 2026-10-30 · **Version:** 0.2.0 · **Current phase:** 2 (master data, purchasing,
+stock) and 3 (assembly and quality) built and verified locally and in CI; open questions next, then
+Phase 4 on the owner's go-ahead.
 
 Labels used below: **Verified** = automated tests pass locally (and in CI once the run is green);
 **Built, not yet verified** = code exists, the check has not run; **Planned** = not built.
@@ -25,15 +26,33 @@ Nothing here has been sandbox-tested against an external provider or production-
 | Phase | Scope | Status |
 | --- | --- | --- |
 | 0 | Baseline, plan, assumptions, 111-checkpoint register | Written |
-| 1 | Foundation: sign-in, sessions, CSRF, configurable roles/permissions (17 role templates), users, append-only audit log, company settings, job queue, health, CI, design system | **Built, verified locally; CI pending** |
-| 2 | Master data (models, BOM-ready items, UoM, parties, warehouses, numbering), suppliers & procurement (requests, quotations, POs with approval, receipts & inspection, returns), inventory (ledger, reservations, transfers, counts, adjustments, reconciliation) | Next |
-| 3 | Assembly & quality: BOM versions, assembly orders, issue/consume/return, serial assignment, configurable checklists and test records, hold/rework, finished-stock receipt | Planned |
+| 1 | Foundation: sign-in, sessions, CSRF, configurable roles/permissions (17 role templates), users, append-only audit log, company settings, job queue, health, CI, design system | **Verified (local + CI)** |
+| 2 | Master data (models, items, units, parties, warehouses, numbering, business rules), suppliers & procurement (requests, quotations and comparison, POs with approval, receipts & inspection, returns), inventory (ledger, reservations, transfers, counts, corrections, reconciliation, serials) | **Verified (local + CI)** |
+| 3 | Assembly & quality: BOM versions, assembly orders, reserve/issue/consume/return, serial assignment with component links, configurable checklists and test parameters, pass/hold/rework, finished-stock receipt only through a passing inspection | **Verified (local + CI)** |
 | 4 | Sales & projects: enquiries, quotations with revisions and approval, sales orders, projects/sites/surveys, requirement sheets with approval, procurement & assembly links, dispatch and delivery | Planned |
 | 5 | Installation & traceability: visits, commissioning, handover, QR labels, battery banks, lifecycle timeline | Planned |
 | 6 | Warranty & after-sales: registration/activation, public verification portal, AMC, service requests, replacements, maintenance alerts and reset codes (manual process until a supplier API is confirmed) | Planned |
 | 7 | Notifications (in-app; email/SMS/WhatsApp adapters off until approved), dashboards, reports, exports, file attachments | Planned |
 | 8 | Hardening: 111-checkpoint evidence, performance and concurrency tests, backup/restore drill, deployment package, incident process | Planned |
 | 9 | End-to-end verification, release readiness, activation checklist | Planned |
+
+## Phases 2–3: what was built
+
+| Area | What works | Evidence |
+| --- | --- | --- |
+| Master data | Items of five kinds (battery models with capacity, voltage, chemistry and free specifications; purchased battery units; components; accessories; materials), units of measure, tracking by quantity, lot or serial, minimum stock. Suppliers, customers, distributors and dealers in one register with contacts, terms and supplied items. Warehouses created with one area per stock status; racks added as locations. Fields history depends on (unit, tracking, kind; a location's use while it holds stock) lock once used | `test_purchasing.py::test_items_keep_what_history_depends_on`, `::test_new_warehouses_get_every_area_the_workflows_need` |
+| Rules & numbering | Purchase-order auto-approval limit (off by default), self-approval switches (off), document prefixes and digits per type; every change audited | `::test_document_numbers_follow_on_and_can_be_reformatted`, `::test_small_orders_in_the_company_currency_can_approve_themselves` |
+| Purchasing | Purchase requests (from shortages, assembly, projects), supplier quotations compared side by side (lowest price per currency and earliest delivery marked, no invented exchange rates), order from the chosen quotation, purchase orders drafted → submitted → approved/rejected (no self-approval), cancel, close short | `::test_the_whole_purchase_journey_keeps_quantities_apart` |
+| Receiving | Deliveries recorded against approved orders only, never more than outstanding; everything lands in receiving inspection unless the person may decide on quality; decisions accept / reject / hold, and release from hold; serial units registered once with the supplier's serial kept; returns of rejected goods, with replacement tracked as outstanding | same test, `::test_received_serials_are_registered_once`, `::test_goods_are_received_only_against_approved_orders` |
+| Stock ledger | Every change is one append-only movement plus a balance that can't go below zero (database CHECK); a repeated submit is recorded once (operation keys); reconciliation report compares balances with the ledger and serials with balances | `test_stock.py::test_stock_never_goes_negative`, `::test_the_ledger_cannot_be_rewritten_by_the_app`, `reconciled()` after every flow |
+| Availability and reservations | Available = in available-stock locations; free = available − active reservations; reservations against projects, sales orders or assembly orders; four people reserving the last unit at once: one succeeds | `::test_reservations_hold_stock_and_the_last_units_go_to_one_person` |
+| Transfers | Between locations of the same use only, so no status (accepted, released, passed) can be skipped by moving stock | `::test_transfers_never_change_a_status` |
+| Corrections and counts | Corrections need a reason and a second person; reserved stock can't be corrected away; counts list the books, counters enter quantities or scanned serials, differences become one correction worked out against the stock at approval | `::test_corrections_need_a_second_person_and_a_reason`, `::test_a_count_corrects_against_the_stock_at_approval` |
+| Bills of materials | Versions per assembled model; one active at a time; an active version never changes (a change is a new draft) | `test_assembly.py::test_an_active_bom_never_changes` |
+| Assembly orders | Plan with responsible person and target date; release reserves every component or lists the shortage, which becomes a purchase request in one click; issue to the assembly floor (reservation used first); record each battery with its serial (SMET numbering or captured), actual consumption and links to every component serial or lot; return unused material; complete or cancel with checks | `::test_release_reserves_components_or_lists_what_is_short`, `::test_from_components_to_a_passed_battery`, `::test_only_issued_material_can_be_consumed` |
+| Quality gate | Test parameters and checklists per model; limits apply only once SMET confirms them; a battery passes only with every required check done, every required reading taken and readings within confirmed limits; hold → quarantine, rework → back to the floor and inspected again; only a pass puts a built battery into available stock; inspections keep the limits that applied | `::test_from_components_to_a_passed_battery`, `::test_unconfirmed_limits_are_recorded_not_applied` |
+| Traceability | Serial record with purchase order, components, what it was built into, inspections and every movement | `GET /serials/{id}`, Playwright journey |
+| Screens | Purchase requests and comparison, purchase orders with quantity columns, delivery and decision dialogs, stock (with below-minimum filter and one-click purchase request), movements with CSV, serial numbers and records, reservations, counts and corrections, assembly orders, final inspection, bills of materials, items with inspection set-up, suppliers & customers, warehouses, rules & numbering, "Waiting for you" on the overview | Playwright `phase23.spec.ts` (two people: one raises, the other approves; phone width checked) |
 
 ## Phase 1: what was built
 
@@ -54,20 +73,25 @@ Nothing here has been sandbox-tested against an external provider or production-
 | Database setup | `python -m app.setup_db`: two databases, least-privilege logins, `.env` written | used by CI on Linux and Windows |
 | Web app | Sign-in, setup, forced password change, overview (team setup, roles in use, recent changes), users (count-card filters, add/edit/deactivate/reset), roles editor, audit log, company settings, system health; light/dark/system theme; phone layout; permission-aware navigation | Vitest (5), Playwright (2 journeys), design inspector at 1440/768/390 |
 
-## Verification results (2026-10-28, local)
+## Verification results (2026-10-30)
 
 See [docs/TEST_RESULTS.md](docs/TEST_RESULTS.md) for the commands and outputs.
 
-- Backend: 53 pytest tests passed; ruff lint and format clean; pip-audit: no known vulnerabilities.
-- Frontend: oxlint clean, TypeScript clean, 5 Vitest tests passed, production build OK, npm audit: 0.
-- Browser: 2 Playwright journeys passed locally (Chromium); CI will run them in Edge on Windows.
-- Design: taste-skill inspector, app rules, 0 FAIL on every screen; remaining WARNs are defended
-  in [docs/DESIGN.md](docs/DESIGN.md).
-- CI (GitHub Actions): **blocked.** The first run (40694915802) did not start any job: GitHub reports
-  that recent account payments failed or the spending limit must be raised (private repositories use
-  paid Actions minutes beyond the free allowance). So the Windows and Edge checks have **not run yet**.
-  Owner's choice: fix the billing setting, or make the repository public (Actions is free for public
-  repositories), or run the README checks on the laptop.
+- Backend: 72 pytest tests passed (53 from Phase 1, 19 new); ruff lint and format clean.
+- Frontend: oxlint and TypeScript clean, 7 Vitest tests, production build OK.
+- Browser: 3 Playwright journeys passed locally (Chromium), including the Phase 2–3 journey.
+- CI (GitHub Actions, public repository since 2026-10-30): every job green on the Phase 1 branch and on
+  this branch: Ubuntu and Windows backends, frontend, Edge on Windows, secret scan, dependency audit.
+- Independent review of Phases 2–3: see the section below.
+
+## Known limitations (Phases 2–3)
+
+- Supporting documents and photos (quotations, delivery notes, test attachments) need file storage: Phase 7.
+- No import of existing items, suppliers or opening stock yet: waiting for SMET's sample files (question 27).
+- Item pickers list the first 200 active items (noted in code); a search-as-you-type picker replaces them past that.
+- Rework keeps the battery's components; swapping a component during rework is not built.
+- Purchase prices are reference only; there is no stock valuation until SMET answers question 7.
+- Sales orders and projects arrive in Phase 4; until then a reservation names what it is for in words.
 
 ## Known limitations (Phase 1)
 
@@ -79,9 +103,6 @@ See [docs/TEST_RESULTS.md](docs/TEST_RESULTS.md) for the commands and outputs.
 
 ## Blockers
 
-- CI cannot run until the GitHub billing issue above is resolved by the owner (no change made here).
-
-None that stop Phase 2 from being built: every rule it needs has a safe, changeable default. The
-answers marked *(Phase 2)* in [docs/ASSUMPTIONS_AND_OPEN_QUESTIONS.md](docs/ASSUMPTIONS_AND_OPEN_QUESTIONS.md)
-(models, warehouses, stock corrections, stock value, purchase approval, document numbers) are needed
-before real use.
+None. The defaults used until SMET answers are listed in
+[docs/ASSUMPTIONS_AND_OPEN_QUESTIONS.md](docs/ASSUMPTIONS_AND_OPEN_QUESTIONS.md) (A8–A15); they must be
+confirmed before real use.

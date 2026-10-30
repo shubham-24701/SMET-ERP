@@ -19,6 +19,14 @@ commissioning".
 | A5 | Accounting, payment of invoices, VAT returns and banking stay outside (as the proposal says) | — |
 | A6 | Security defaults: sign-in lasts a working day (10 hours) and ends after 1 hour without use; passwords have at least 12 characters | SMET's IT policy says otherwise |
 | A7 | The system runs on the owner's computer until a hosting option and its monthly cost are approved | — |
+| A8 | Every purchase order needs an approver, and nobody approves an order they raised or submitted (question 9). An automatic-approval limit can be switched on in Rules & numbering | SMET sets a limit or allows self-approval |
+| A9 | Every stock correction needs a reason and a second person's approval; the Operations Manager role can approve (questions 6, 25b) | SMET names other approvers or a quantity threshold |
+| A10 | Purchase prices are kept for reference only; stock has no value in the system (question 7) | SMET wants latest price or average cost |
+| A11 | Document numbers look like `PO-2026-00001`; SMET's own battery serials like `SMET-2026-00001` (questions 1a, 11). Both are changeable in Rules & numbering, and serials can also be typed in | SMET sends its formats |
+| A12 | A new warehouse gets a main store, receiving inspection, quarantine, rejected-goods and assembly areas (question 5) | SMET's real layout differs |
+| A13 | Final inspection applies a limit only after SMET marks it confirmed; a battery model with no checklist or readings set up can't pass at all (question 4) | — |
+| A14 | Purchased battery units and serialised parts are registered by serial number on arrival; the supplier's serial is kept beside SMET's (questions 1b, 3) | Lot numbers are enough for some parts |
+| A15 | A delivery larger than what is outstanding is refused, so the order is changed first (question 28) | SMET accepts a tolerance |
 
 Technical choices (database, sign-in mechanism) are recorded for developers in
 [engineering/ARCHITECTURE_DECISIONS.md](engineering/ARCHITECTURE_DECISIONS.md).
@@ -108,3 +116,9 @@ safe default, but they must be answered before the system is used for real.
     This decides the hosting options and their cost.
 27. **Existing data.** Customers, suppliers, products and opening stock: in Excel? A sample file lets us
     build the import templates.
+28. **Over-delivery (Phase 2).** When a supplier delivers more than ordered, is a small surplus
+    accepted (for example up to 2%), or must the order be changed first? *(Default: changed first.)*
+29. **Assembly and recipes (Phase 3).**
+    a. Who plans assembly orders, and who may make a new bill of materials version active?
+       *(Default: the Operations Manager role for both; Quality sets inspection limits.)*
+    b. During rework, are components ever swapped (for example a weak cell)? If so, which ones?

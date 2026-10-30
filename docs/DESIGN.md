@@ -49,7 +49,18 @@ lifecycle strip on each battery's page.
 - *Sign-in, hero-void and panel-void:* the space around the centred form is the screen's one rest; the
   pack of cells fills the brand field.
 
-Not yet photographed: dark mode, and every dialog. Recheck both when Phase 2 adds screens.
+Not yet photographed: dark mode, and every dialog.
+
+## Operations screens (Phases 2–3)
+
+Same tokens and components; no new colour. Records (purchase order, assembly order, serial number)
+open with a back link, the number as the title, one facts strip (status first), then the lines table
+with every quantity in its own right-aligned column, then the history. The quantities that decide work
+(outstanding, free, on the floor) are the only bold figures. Document lines are edited in place
+(`LineRows`); serial numbers are typed or scanned one per line. The overview gains "Waiting for you":
+one count per queue the person's roles can clear, each linking to it. Checked in the Playwright
+journey at 1366 px and 390 px; the page never scrolls sideways on a phone (asserted), wide tables
+scroll inside their own box.
 
 ## Rules kept for later phases
 

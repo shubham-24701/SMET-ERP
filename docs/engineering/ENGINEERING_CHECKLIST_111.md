@@ -11,7 +11,7 @@ To keep 111 rows readable, the 16 fields the addendum lists are folded into thes
 *Decision* carries purpose, rationale, risk if omitted and cost; *Where* carries the implementation
 location and status; *Next* carries dependencies, follow-up and residual risk.
 
-Last update: 2026-10-28, end of Phase 1. Deployment items (TLS, WAF, backups…) wait for the hosting
+Last update: 2026-10-30, end of Phases 2–3. Deployment items (TLS, WAF, backups…) wait for the hosting
 decision in Phase 8 and are marked Pending, not Pass.
 
 | # | Checkpoint | Assessment | Decision | Where | Verification | Result | Next |
@@ -29,7 +29,7 @@ decision in Phase 8 and are marked Pending, not Pass.
 | 11 | Timeouts | Applicable | Database: 5 s to connect, 30 s per statement; job lease 5 min; provider calls get timeouts in P7 | `db.make_engine`, `jobs.LEASE` | `test_database_statements_time_out` | Pass | P7: HTTP timeouts |
 | 12 | Retries | Applicable | Failed jobs retry automatically up to `max_attempts` | `jobs.run_one` | `test_jobs_retry_with_backoff_then_dead_letter` | Pass | — |
 | 13 | Exponential Backoff | Applicable | 30 s × 2ⁿ, capped at 1 h | `jobs.run_one` | same test | Pass | — |
-| 14 | Idempotency | Applicable | Jobs carry unique keys; setup runs once. Business writes (receipts, dispatches, conversions) get idempotency keys and unique constraints in their phase | `jobs.enqueue`, `company.id = 1` | `test_setup_runs_once…`, job key test | Pass (P1 scope) | P2–P4: per-operation keys |
+| 14 | Idempotency | Applicable | Jobs carry unique keys; setup runs once; every stock-changing post (receipt, decision, return, transfer, reservation, issue, build, inspection) carries an operation key recorded in the same transaction, so a retry returns the first result | `jobs.enqueue`, `inventory.claim_key` | `test_the_whole_purchase_journey…` (double-click receipt), job key test | Pass | P4: dispatches and conversions |
 | 15 | Message Queues | Applicable | PostgreSQL table queue, no broker to run or pay for (ADR-006) | `jobs.py` | `test_parallel_workers_never_run_a_job_twice` | Pass | — |
 | 16 | Pub/Sub | Not applicable (now) | One process; notifications will be events written in the same transaction and fanned out by the worker | — | — | N/A | P7 |
 | 17 | Event-Driven Architecture | Partial | Audit events and queued jobs now; domain events for notifications and reminders in P7. Core stock and approval logic stays synchronous and transactional | `audit.record`, `jobs` | — | Not tested | P7 |
@@ -40,9 +40,9 @@ decision in Phase 8 and are marked Pending, not Pass.
 | 22 | Web Sockets | Not applicable | No live two-way need; polling or SSE covers notifications | — | — | N/A | — |
 | 23 | Long Polling | Not applicable | As above | — | — | N/A | — |
 | 24 | Server Sent Events | Not applicable (now) | Considered for the notification bell in P7 | — | — | N/A | P7 decision |
-| 25 | Database Indexing | Applicable | Indexes on foreign keys, sessions' token, audit (time, action, entity, actor), jobs (status, run time) | migration 0001 | — | Not tested | P8: query plans at volume |
+| 25 | Database Indexing | Applicable | Indexes on foreign keys, sessions' token, audit (time, action, entity, actor), jobs (status, run time); stock moves by (item, time), document, location and serial; balances by location; serials by status, item, location | migrations 0001, 0003 | — | Not tested | P8: query plans at volume |
 | 26 | Query Optimization | Applicable | Permissions load in one join per request; lists are capped at 200 rows | `auth.load_access` | — | Not tested | P8 measurements |
-| 27 | N+1 Queries | Applicable | Roles and users lists load related rows in bulk | `admin._role_rows`, `admin._roles_of` | `test_roles_list_runs_a_fixed_number_of_queries` | Pass | Add the same guard to each new list |
+| 27 | N+1 Queries | Applicable | Roles and users lists load related rows in bulk; stock summary and movement lists load names in a few queries per page (`summaries`, `move_rows`); document lists still read lines per row (≤ 50 per page) | `admin._role_rows`, `admin._roles_of`, `inventory.summaries`, `inventory.move_rows` | `test_roles_list_runs_a_fixed_number_of_queries` | Pass | Add the same guard to each new list |
 | 28 | Connection Pooling | Applicable | SQLAlchemy pool (5 + 5 overflow), pre-ping replaces dropped connections | `db.py` | — | Not tested | P8: connection-exhaustion test |
 | 29 | Read Replicas | Not applicable | Load is small; reports run on the primary | — | — | N/A | Revisit if reports slow down writes |
 | 30 | Sharding | Not applicable | Data volume (thousands of batteries a year) fits one database comfortably | — | — | N/A | — |
@@ -51,11 +51,11 @@ decision in Phase 8 and are marked Pending, not Pass.
 | 33 | Leader Election | Not applicable | `SKIP LOCKED` lets workers share jobs without a leader; periodic tasks are idempotent clean-ups | `jobs.claim` | parallel worker test | N/A | — |
 | 34 | CAP Theorem | Applicable (assessed) | One primary database: consistency over availability during a partition. Right for stock and approvals | ADR-001 | — | N/A | — |
 | 35 | Eventual Consistency | Partial | Only outbound notifications are eventual; stock, serials and authorization are always read from committed data | ADR-007 | — | Not tested | P7 |
-| 36 | Optimistic Locking | Applicable | `version` on users, roles, company; stale saves get 409 | `admin.py` | `test_role_changes_are_audited…`, `test_company_settings_validate_and_lock` | Pass | Every editable record in later phases |
-| 37 | Pessimistic Locking | Applicable | Company, user and role rows locked on update; changes to access serialised by an advisory lock; stock balances and serials will be locked during reservation and dispatch | `admin.update_company`, `admin._managed_user`, `admin._editable_role` | concurrent admin test | Pass (P1 scope) | P2: reservation tests |
+| 36 | Optimistic Locking | Applicable | `version` on users, roles, company, items, parties, warehouses, locations, orders, reservations, corrections, counts; stale saves get 409 | `admin.py`, `masters.py`, `procurement.py`, `inventory.py`, `assembly.py` | `test_role_changes_are_audited…`, `test_corrections_need_a_second_person…` (second approval refused) | Pass | Every editable record in later phases |
+| 37 | Pessimistic Locking | Applicable | Company, user and role rows locked on update; access changes serialised by an advisory lock; items locked (in id order) before any change of availability; serials, order lines and number sequences locked while used; balances changed by a guarded UPDATE | `admin.*`, `inventory.lock_items`, `inventory.serials_at`, `masters.next_number` | `test_reservations_hold_stock_and_the_last_units_go_to_one_person` | Pass | P4: dispatch |
 | 38 | Distributed Locking | Not applicable | Database row and advisory locks suffice with one database | — | — | N/A | — |
-| 39 | Race Conditions | Applicable | Simultaneous setup; parallel job workers; two admins removing each other (advisory lock). Stock and serial races are P2–P3's main tests | `auth.setup`, `jobs.claim`, `admin.serialize_access_changes` | `test_setup_runs_once…`, parallel worker test, `test_two_admins_removing_each_other_at_once_leave_one` | Pass (P1 scope) | P2, P3 |
-| 40 | Deadlocks | Applicable | Lock rows in a fixed order (by id) when an operation touches several | — | — | Not tested | P2 tests |
+| 39 | Race Conditions | Applicable | Simultaneous setup; parallel job workers; two admins removing each other; four people reserving the last unit at once; a serial used twice; consuming more than issued | `auth.setup`, `jobs.claim`, `admin.serialize_access_changes`, `inventory.lock_items` | `test_setup_runs_once…`, parallel worker test, `test_two_admins…`, `test_reservations_hold_stock_and_the_last_units_go_to_one_person`, `test_from_components_to_a_passed_battery` | Pass | P4: dispatch of serials |
+| 40 | Deadlocks | Applicable | Multi-item operations lock items in id order (`lock_items`), serials in id order | `inventory.lock_items`, `inventory.serials_at` | concurrent reservation test (no deadlock) | Pass (P2–P3 scope) | P8: mixed-load soak test |
 | 41 | Memory Leaks | Applicable | In-memory rate-limit map is bounded (10,000 keys, idle keys dropped) | `auth.rate_limit` | — | Not tested | P8 soak test |
 | 42 | Garbage collection | Not applicable | CPython defaults; nothing long-lived beyond the bounded map | — | — | N/A | Watch in the P8 soak test |
 | 43 | Thread Safety | Applicable | Worker thread uses its own database sessions; password hashing limited by a semaphore | `jobs.py`, `auth._HASHING` | parallel worker test | Pass | — |
