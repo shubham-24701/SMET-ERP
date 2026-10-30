@@ -44,14 +44,16 @@ const TONE: Record<string, Tone> = {
   consumed: 'neutral', written_off: 'danger', returned_to_supplier: 'neutral', used: 'neutral', selected: 'success',
   declined: 'neutral', passed: 'success', quoted: 'info', lost: 'neutral', accepted: 'success', revised: 'neutral',
   expired: 'warning', partly_dispatched: 'warning', dispatched: 'info', delivered: 'success', planning: 'neutral',
-  planned: 'neutral', superseded: 'neutral', done: 'success',
+  planned: 'neutral', superseded: 'neutral', done: 'success', scheduled: 'info', started: 'warning',
+  installed: 'info', commissioned: 'info', handed_over: 'success', in_service: 'success', removed: 'warning',
 }
 const WORDS: Record<string, string> = {
   partly_received: 'Partly received', awaiting_inspection: 'Awaiting inspection', on_hold: 'On hold',
   under_assembly: 'Built, awaiting inspection', in_progress: 'In progress', written_off: 'Written off',
   returned_to_supplier: 'Returned to supplier', issued: 'On the assembly floor', submitted: 'Waiting for approval',
   partly_dispatched: 'Partly dispatched', declined: 'Declined by customer', accepted: 'Accepted by customer',
-  dispatched: 'On the way',
+  dispatched: 'On the way', started: 'In progress', handed_over: 'Handed over', in_service: 'In service',
+  removed: 'Removed from its bank',
 }
 export const words = (s: string) => WORDS[s] ?? s.charAt(0).toUpperCase() + s.slice(1).replaceAll('_', ' ')
 

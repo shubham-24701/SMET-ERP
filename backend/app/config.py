@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     session_idle_minutes: int = 60  # signed out after an hour without any request
     cookie_secure: bool = False  # must be true whenever the app is served over HTTPS
     run_worker_in_api: bool = True  # background job worker inside the API process
+    # Photographs and reports: kept outside the code folder (on Windows, e.g. D:/smet-files).
+    files_dir: str = str(BACKEND_DIR / "data" / "files")
+    max_upload_mb: int = 10
+    # The address printed in QR labels. Labels can't be reprinted cheaply, so set the real one first.
+    public_base_url: str = "http://localhost:5173"
 
     @property
     def owner_url(self) -> str:

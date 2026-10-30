@@ -96,6 +96,9 @@ function WorkQueue() {
     ['Batteries waiting for inspection', useTotal('quality.create', '/inspections/queue?limit=1'), '/assembly/inspection'],
     ['Open purchase requests', useTotal('purchasing.create', '/purchase-requests?status=open&limit=1'), '/purchasing/requests'],
     ['Open enquiries', useTotal('sales.create', '/enquiries?status=open&limit=1'), '/sales/enquiries'],
+    ['Your site visits to do', useTotal('installation.record', '/visits?mine=true&status=scheduled,started&limit=1'), '/installation/visits'],
+    ['Battery banks to commission', useTotal('installation.create', '/banks?status=installed&limit=1'), '/installation/banks'],
+    ['Battery banks to hand over', useTotal('installation.create', '/banks?status=commissioned&limit=1'), '/installation/banks'],
     ['Dispatches planned or on the way', useTotal('dispatch.create', '/dispatches?status=planned,dispatched&limit=1'), '/dispatch'],
   ]
   const shown = rows.filter(([, n]) => n !== undefined)
