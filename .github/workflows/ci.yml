@@ -1,0 +1,151 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "phase-*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend-linux:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: ci-only-password
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v5
+      - run: pip install uv
+      - run: uv sync --locked # downloads the pinned Python (.python-version) itself
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - name: Create the databases and logins exactly as the README does
+        run: uv run python -m app.setup_db --admin-url "host=127.0.0.1 port=5432 user=postgres password=ci-only-password dbname=postgres"
+      - run: uv run alembic upgrade head
+      - run: uv run pytest -q --junitxml=junit.xml
+      - name: Name the failing tests (logs can't be read outside GitHub)
+        if: failure()
+        run: |
+          uv run python - <<'PY'
+          import xml.etree.ElementTree as ET
+          for case in ET.parse("junit.xml").iter("testcase"):
+              for bad in [*case.iter("failure"), *case.iter("error")]:
+                  text = " ".join((bad.get("message") or bad.text or "").split())[:500]
+                  print(f"::error title={case.get('name')}::{text}")
+          PY
+
+  backend-windows:
+    # The owner's laptop: Windows, PostgreSQL installed natively (the runner image ships it, stopped).
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v5
+      - name: Start the PostgreSQL that comes with the runner
+        shell: pwsh
+        run: |
+          Get-Service -Name "postgresql*" | Set-Service -StartupType Manual -PassThru | Start-Service
+          & "$env:PGBIN\pg_isready.exe" -h 127.0.0.1 -t 60
+      - run: pip install uv
+      - run: uv sync --locked
+      - run: uv run python -m app.setup_db --admin-url "host=127.0.0.1 port=5432 user=postgres password=root dbname=postgres"
+      - run: uv run alembic upgrade head
+      - run: uv run pytest -q --junitxml=junit.xml
+      - name: Name the failing tests
+        if: failure()
+        shell: bash
+        run: |
+          uv run python - <<'PY'
+          import xml.etree.ElementTree as ET
+          for case in ET.parse("junit.xml").iter("testcase"):
+              for bad in [*case.iter("failure"), *case.iter("error")]:
+                  text = " ".join((bad.get("message") or bad.text or "").split())[:500]
+                  print(f"::error title={case.get('name')}::{text}")
+          PY
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Known vulnerabilities in runtime packages
+        run: npm audit --omit=dev --audit-level=high
+
+  e2e-windows:
+    # The whole app on Windows, driven in Edge: the closest match to the owner's laptop.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Start PostgreSQL
+        shell: pwsh
+        run: |
+          Get-Service -Name "postgresql*" | Set-Service -StartupType Manual -PassThru | Start-Service
+          & "$env:PGBIN\pg_isready.exe" -h 127.0.0.1 -t 60
+      - run: pip install uv
+      - run: uv sync --locked
+        working-directory: backend
+      - run: uv run python -m app.setup_db --admin-url "host=127.0.0.1 port=5432 user=postgres password=root dbname=postgres"
+        working-directory: backend
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npx playwright test
+        working-directory: frontend
+        env:
+          PW_CHANNEL: msedge
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-windows
+          path: |
+            frontend/e2e-screens
+            frontend/test-results
+          if-no-files-found: ignore
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  python-audit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v5
+      - run: pip install uv
+      - name: Known vulnerabilities in runtime packages (PyPI advisory database)
+        run: |
+          uv export --frozen --no-dev --no-hashes --no-emit-project > requirements.txt
+          uvx pip-audit -r requirements.txt --no-deps --disable-pip
