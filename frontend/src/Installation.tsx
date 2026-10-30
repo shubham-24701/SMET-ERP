@@ -799,7 +799,7 @@ export function LabelsPage() {
 
 type Event = { at: string; kind: string; title: string; detail?: string; by?: string | null; doc?: { type: string; id: string; number: string }; link?: { type: string; id: string } }
 type Timeline = { now: { status: string; customer: { name: string } | null; bank?: { id: string; number: string; name: string }; position?: string; site?: SiteRef; location?: string
-  warranty: { state: string; registration?: { id: string; number: string }; expiry_date?: string }; amc: { id: string; number: string; ends_on: string }[] }; events: Event[] }
+  warranty?: { state: string; registration?: { id: string; number: string }; expiry_date?: string }; amc?: { id: string; number: string; ends_on: string }[] }; events: Event[] }
 const DOC_PATH: Record<string, string> = { dispatch: '/dispatch/', visit: '/installation/visits/', assembly_order: '/assembly/orders/', purchase_order: '/purchasing/orders/',
   warranty: '/warranty/', service: '/service/', alert: '/service/alerts/' }
 
@@ -815,8 +815,8 @@ export function Lifecycle({ id }: { id: string }) {
         ['Site', n.site ? <Link to={`/projects/${n.site.project.id}`}>{n.site.name} · {n.site.project.number}</Link> : '—'],
         ['Bank', n.bank ? <Link to={`/installation/banks/${n.bank.id}`}>{n.bank.number} {n.bank.name}, position {n.position}</Link> : '—'],
         ['In stock at', n.location ?? '—'],
-        ['Warranty', n.warranty.registration ? <Link to={`/warranty/${n.warranty.registration.id}`}>{words(n.warranty.state)}{n.warranty.expiry_date ? ` to ${day(n.warranty.expiry_date)}` : ''}</Link> : 'None'],
-        ['Maintenance contract', n.amc.length ? n.amc.map((c) => <Link key={c.id} to={`/amc/${c.id}`}>{c.number} to {day(c.ends_on)}</Link>) : 'None']]} />
+        ...(n.warranty ? [['Warranty', n.warranty.registration ? <Link to={`/warranty/${n.warranty.registration.id}`}>{words(n.warranty.state)}{n.warranty.expiry_date ? ` to ${day(n.warranty.expiry_date)}` : ''}</Link> : 'None'] as [string, React.ReactNode]] : []),
+        ...(n.amc ? [['Maintenance contract', n.amc.length ? n.amc.map((c) => <Link key={c.id} to={`/amc/${c.id}`}>{c.number} to {day(c.ends_on)}</Link>) : 'None'] as [string, React.ReactNode]] : [])]} />
       <h2 className="section">Lifecycle</h2>
       <ol className="timeline panel panel-wide">{data.events.map((e, i) => (
         <li key={i} data-kind={e.kind}>

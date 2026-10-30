@@ -48,18 +48,8 @@ def safe_name(name: str) -> str:
     return base[-160:] or "file"
 
 
-def store(
-    db,
-    user,
-    owner_type: str,
-    owner_id,
-    file: UploadFile,
-    kind: str,
-    caption: str,
-    entity: tuple[str, object, str],
-) -> StoredFile:
-    """Checks, writes and records one file in the caller's transaction, then commits; if the commit
-    fails the bytes are removed again (no row, no file). `entity` = (audit type, id, label)."""
+def read_checked(file: UploadFile, kind: str) -> tuple[bytes, str]:
+    """The file's bytes and real type, or a 413/422 that says what is wrong with it."""
     limit = get_settings().max_upload_mb * 2**20
     data = file.file.read(limit + 1)
     if len(data) > limit:
@@ -84,6 +74,22 @@ def store(
         raise HTTPException(
             422, [{"loc": ["body", "file"], "msg": "A photograph must be an image", "type": "x"}]
         )
+    return data, ctype
+
+
+def store(
+    db,
+    user,
+    owner_type: str,
+    owner_id,
+    file: UploadFile,
+    kind: str,
+    caption: str,
+    entity: tuple[str, object, str],
+) -> StoredFile:
+    """Checks, writes and records one file in the caller's transaction, then commits; if the commit
+    fails the bytes are removed again (no row, no file). `entity` = (audit type, id, label)."""
+    data, ctype = read_checked(file, kind)
     f = StoredFile(id=uuid.uuid4(), owner_type=owner_type, owner_id=owner_id, kind=kind, name=safe_name(file.filename),
                    content_type=ctype, size=len(data), sha256=hashlib.sha256(data).hexdigest(),
                    caption=caption.strip(), uploaded_by=user.id if user else None)  # fmt: skip

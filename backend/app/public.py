@@ -21,10 +21,11 @@ from typing import Annotated
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, StringConstraints
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.audit import record, request_info
 from app.auth import DB, rate_limit
-from app.files import store
+from app.files import read_checked, store
 from app.masters import next_number, rules
 from app.models import Item, Serial, ServiceRequest, WarrantyRegistration
 from app.service import _target
@@ -107,6 +108,11 @@ def public_registration(
     proof: Annotated[UploadFile | None, File()] = None,
 ) -> dict:
     limit("register", 5, 3600)
+    if (
+        proof is not None and proof.filename
+    ):  # judged before the serial, so the answer can't tell them apart
+        read_checked(proof, "proof_of_purchase")
+        proof.file.seek(0)
     s = db.scalar(select(Serial).join(Item, Item.id == Serial.item_id)
                   .where(Serial.serial == serial.strip().upper(), Item.kind.in_(("battery_model", "battery_unit"))))  # fmt: skip
     taken = s and db.scalar(select(WarrantyRegistration.id).where(WarrantyRegistration.serial_id == s.id,
@@ -119,8 +125,12 @@ def public_registration(
     r = WarrantyRegistration(number=next_number(db, "warranty"), serial_id=s.id, route="public",
                              customer_name=customer_name.strip(), customer_contact=contact.strip(), address=address.strip(),
                              distributor_name=seller.strip(), sale_date=purchase_date, notes="Submitted on the public form")  # fmt: skip
-    db.add(r)
-    db.flush()
+    try:
+        with db.begin_nested():
+            db.add(r)
+            db.flush()
+    except IntegrityError:  # someone registered it a moment ago
+        return RECEIVED
     record(
         db,
         None,

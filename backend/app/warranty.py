@@ -355,6 +355,7 @@ class RegIn(BaseModel):
     sale_date: date | None = None
     installation_date: date | None = None
     commissioning_date: date | None = None
+    handover_date: date | None = None
     notes: Text = ""
 
 
@@ -369,6 +370,7 @@ class RegPut(BaseModel):
     sale_date: date | None = None
     installation_date: date | None = None
     commissioning_date: date | None = None
+    handover_date: date | None = None
     notes: Text = ""
 
 
@@ -564,10 +566,34 @@ def correct(reg_id: uuid.UUID, body: CorrectIn, p: require("warranty.correct"), 
         for k, v in body.model_dump(exclude={"version", "reason"}).items()
         if k in body.model_fields_set and v is not None
     }
+    if r.route == "replacement" and set(data) & set(EVENTS.values()):
+        raise field_error(
+            "reason",
+            "A replacement's dates come from the battery it replaced; only contact details are corrected here",
+        )
     before = {k: str(getattr(r, k)) for k in data}
     for k, v in data.items():
         setattr(r, k, v)
     pol = db.get(WarrantyPolicy, r.policy_id)
+    if r.route == "replacement":  # its term was set by the replacement rule, not by its own dates
+        changes = {
+            k: [before[k], str(getattr(r, k))] for k in data if before[k] != str(getattr(r, k))
+        }
+        if not changes:
+            raise field_error("reason", "Nothing would change")
+        r.version += 1
+        record(
+            db,
+            p.user,
+            "warranty.correct",
+            "warranty_registration",
+            r.id,
+            f"{r.number} corrected",
+            changes,
+            reason=body.reason,
+        )
+        db.commit()
+        return reg_row(db, r, full=True)
     start = getattr(r, EVENTS[pol.start_event])
     if start is None or start > date.today():
         raise field_error(
@@ -648,8 +674,8 @@ def carry_to_replacement(
     Nothing is created if the original had no approved warranty."""
     orig = db.scalar(select(WarrantyRegistration).where(WarrantyRegistration.serial_id == old.id,
                                                         WarrantyRegistration.status == "approved").with_for_update())  # fmt: skip
-    if orig is None:
-        return None
+    if orig is None or not (orig.start_date <= on <= orig.expiry_date):
+        return None  # no warranty in force: a replacement then carries none (a paid replacement)
     rule = db.get(WarrantyPolicy, orig.policy_id).replacement_rule
     new_pol = policy_for(db, new.item_id, on)
     expiries = {"original_remaining": [orig.expiry_date]}
@@ -660,6 +686,10 @@ def carry_to_replacement(
             )
         expiries["new_full"] = [expiry_for(on, new_pol.months)]
         expiries["longer"] = [orig.expiry_date, expiry_for(on, new_pol.months)]
+    for earlier in db.scalars(select(WarrantyRegistration).where(WarrantyRegistration.serial_id == new.id,
+                                                                 WarrantyRegistration.status.in_(OPEN)).with_for_update()):  # fmt: skip
+        earlier.status, earlier.ended_on, earlier.version = "ended", on, earlier.version + 1
+        earlier.end_reason = f"Superseded: {new.serial} now replaces {old.serial}"
     orig.status, orig.ended_on, orig.end_reason, orig.version = (
         "ended",
         on,

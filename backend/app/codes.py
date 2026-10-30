@@ -137,7 +137,9 @@ class AlertIn(BaseModel):
 
 @router.post("/maintenance-alerts", status_code=status.HTTP_201_CREATED)
 def register_alert(body: AlertIn, p: require("codes.create"), db: DB) -> dict:
-    sr = get_or_404(db, ServiceRequest, body.service_request_id, "Service request")
+    sr = get_or_404(
+        db, ServiceRequest, body.service_request_id, "Service request", lock=True
+    )  # not closing meanwhile
     if sr.status == "closed":
         raise conflict(f"{sr.number} is closed; open a new service request")
     s = (

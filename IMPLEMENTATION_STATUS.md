@@ -52,6 +52,7 @@ Nothing here has been sandbox-tested against an external provider or production-
 | Replacement | Linked to the original in the bank and on the request; its warranty follows the original's policy (rest of term, new term or longer); the original's ends; histories kept | `::test_a_replacement_is_linked_to_the_original_and_takes_its_warranty` |
 | Reset codes | Alert → verification of serial, customer and location → completed inspection visit → code typed in by `codes.reveal`, encrypted, recorded once; reveal needs a reason and is audited; never in lists, the audit log or the application log; erased after the retention period; cleared or not recorded as seen on site | `::test_a_service_request_moves_by_the_rules_and_a_reset_code_stays_secret` |
 | Lifecycle | Warranty decisions, service requests and alerts on each battery's timeline; current warranty and AMC on the battery page | `::test_a_replacement_is_linked…` |
+| Independent review | 3 high (a corrected replacement got a new term; an expired original passed on a backwards warranty; the public form revealed registrable serials), 6 medium, 3 low; all fixed, 9 with regression tests that fail without the fix | `test_review_p6.py`, TEST_RESULTS.md |
 | Screens | Service requests, maintenance contracts with reminders, warranty registrations and policies, maintenance alerts, the public page; after-sales rules in Rules & numbering; dashboard lines | `phase6.spec.ts` |
 
 ## Phase 5: what was built
@@ -143,6 +144,7 @@ See [docs/TEST_RESULTS.md](docs/TEST_RESULTS.md) for the commands and outputs.
 - Distributors and customers have no login of their own; the public form and SMET staff cover registration and requests (question 36).
 - Reset codes are recorded by hand: no supplier API is known (question 22).
 - Service requests have no response-time targets (question 35).
+- Dates use the server's clock: the server must run on Asia/Dubai time (P8 deployment note).
 
 ## Known limitations (Phase 5)
 

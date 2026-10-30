@@ -618,7 +618,7 @@ function RegForm({ reg, onDone }: { reg?: Reg; onDone: (r: Reg) => void }) {
       const d = (k: string) => s(k) || null
       const body = { customer_id: d('customer_id'), customer_name: s('customer_name'), customer_contact: s('customer_contact'), address: s('address'),
         distributor_id: d('distributor_id'), distributor_name: s('distributor_name'), sale_date: d('sale_date'), installation_date: d('installation_date'),
-        commissioning_date: d('commissioning_date'), notes: s('notes') }
+        commissioning_date: d('commissioning_date'), handover_date: d('handover_date'), notes: s('notes') }
       void action.run('save', async () => onDone(reg ? await api<Reg>(`/warranty-registrations/${reg.id}`, { method: 'PUT', body: { ...body, version: reg.version } })
         : await api<Reg>('/warranty-registrations', { method: 'POST', body: { ...body, serial: s('serial'), route: s('route') } })))
     }}>
@@ -640,6 +640,7 @@ function RegForm({ reg, onDone }: { reg?: Reg; onDone: (r: Reg) => void }) {
         <Field label="Sale date" name="sale_date" type="date" max={today()} defaultValue={reg?.sale_date ?? ''} />
         <Field label="Installation date" name="installation_date" type="date" max={today()} defaultValue={reg?.installation_date ?? ''} />
         <Field label="Commissioning date" name="commissioning_date" type="date" max={today()} defaultValue={reg?.commissioning_date ?? ''} />
+        <Field label="Handover date" name="handover_date" type="date" max={today()} defaultValue={reg?.handover_date ?? ''} />
       </div>
       <TextareaField label="Notes" name="notes" maxLength={2000} rows={2} defaultValue={reg?.notes ?? ''} />
       <p className="hint">Which date starts the warranty depends on the model's policy. Attach the proof of purchase next.</p>

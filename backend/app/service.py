@@ -88,6 +88,10 @@ def amc_of(db: Session, s: Serial, on: date | None = None) -> list[dict]:
     """Contracts covering this battery on a day, worked out from each contract's scope. A renewed
     contract still covers until its own end."""
     on = on or date.today()
+    if (
+        s.status not in AT_CUSTOMER
+    ):  # in the workshop, in stock, scrapped: no contract covers it there
+        return []
     bank = current_bank(db, s.id)
     conds = [(AmcContract.scope == "batteries") & (any_(AmcContract.serial_ids) == s.id)]
     if s.party_id:
@@ -376,6 +380,21 @@ def cancel_amc(amc_id: uuid.UUID, body: CancelIn, p: require("amc.create"), db: 
         f"{c.number} cancelled; {n} planned visits cancelled",
         reason=body.reason,
     )
+    prev = (
+        db.get(AmcContract, c.renewed_from_id, with_for_update=True) if c.renewed_from_id else None
+    )
+    if (
+        prev is not None and prev.status == "renewed"
+    ):  # the renewal didn't happen: the old one runs on
+        prev.status, prev.version = "active", prev.version + 1
+        record(
+            db,
+            p.user,
+            "amc.renewal_cancelled",
+            "amc_contract",
+            prev.id,
+            f"{prev.number} active again: renewal {c.number} cancelled",
+        )
     db.commit()
     return amc_row(db, c, full=True)
 
@@ -922,6 +941,11 @@ def close_sr(sr_id: uuid.UUID, body: CloseIn, p: require("service.create"), db: 
     )
     if alert:
         raise conflict(f"Maintenance alert {alert} is still open")
+    here = db.get(Serial, sr.serial_id) if sr.serial_id else None
+    if here and here.status == "in_repair" and body.resolution != "replaced":
+        raise conflict(f"{here.serial} is still at the workshop: return it to the customer first")
+    if sr.replacement_serial_id and body.resolution != "replaced":
+        raise conflict("A replacement was sent for this request, so it closes as replaced")
     if body.resolution == "replaced":
         orig = db.get(Serial, sr.serial_id) if sr.serial_id else None
         new = db.get(Serial, sr.replacement_serial_id) if sr.replacement_serial_id else None
@@ -940,6 +964,11 @@ def close_sr(sr_id: uuid.UUID, body: CloseIn, p: require("service.create"), db: 
         carry_to_replacement(
             db, p.user, orig, new, date.today(), f"{sr.number}: {body.closure_notes}"
         )
+        # Contracts listing the original battery cover its replacement from now on.
+        for c in db.scalars(select(AmcContract).where(AmcContract.scope == "batteries", any_(AmcContract.serial_ids) == orig.id,
+                                                      AmcContract.status.in_(("draft", "active"))).with_for_update()):  # fmt: skip
+            if new.id not in c.serial_ids:
+                c.serial_ids, c.version = [*c.serial_ids, new.id], c.version + 1
     sr.resolution, sr.closure_notes, sr.acknowledgement = (
         body.resolution,
         body.closure_notes,
@@ -963,6 +992,8 @@ def upload_sr_file(
     caption: Annotated[str, Form(max_length=300)] = "",
 ) -> dict:
     sr = get_or_404(db, ServiceRequest, sr_id, "Service request")
+    if sr.status == "closed":
+        raise conflict(f"{sr.number} is closed")
     store(db, p.user, "service", sr.id, file, kind, caption, ("service_request", sr.id, sr.number))
     return sr_row(db, sr, full=True)
 

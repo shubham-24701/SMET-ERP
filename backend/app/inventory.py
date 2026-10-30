@@ -249,7 +249,11 @@ def serials_at(
 ) -> list[Serial]:
     """The named serials, locked, checked to be this item, at this location, in one of `statuses`."""
     rows = db.scalars(
-        select(Serial).where(Serial.serial.in_(numbers)).order_by(Serial.id).with_for_update()
+        select(Serial)
+        .where(Serial.serial.in_(numbers))
+        .order_by(Serial.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)  # read the locked row, not a copy loaded earlier
     ).all()
     by_no = {s.serial: s for s in rows}
     for n in numbers:

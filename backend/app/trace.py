@@ -17,7 +17,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import any_, select
 from sqlalchemy.orm import Session
 
-from app.auth import DB, require
+from app.auth import DB, Principal, require
 from app.config import get_settings
 from app.installation import site_ref
 from app.inventory import label, serial_row
@@ -95,7 +95,7 @@ def _when(x) -> str:
 
 
 @router.get("/serials/{serial_id}/timeline")
-def timeline(serial_id: uuid.UUID, _: require("stock.view"), db: DB) -> dict:
+def timeline(serial_id: uuid.UUID, p: require("stock.view"), db: DB) -> dict:
     s = get_or_404(db, Serial, serial_id, "Serial number")
     events: list[dict] = []
     moves = db.scalars(
@@ -157,15 +157,17 @@ def timeline(serial_id: uuid.UUID, _: require("stock.view"), db: DB) -> dict:
             ):
                 events.append({"at": v.completed_at, "kind": "stage", "title": STAGE_WORDS[v.stage],
                                "detail": f"On {v.done_on}, {where}", "doc": {"type": "visit", "id": str(v.id), "number": v.number}})  # fmt: skip
-    events += after_sales(db, s)
+    events += after_sales(db, s, p)
     events.sort(key=lambda e: _when(e["at"]))
-    return {"serial": serial_row(db, s), "now": where_now(db, s), "events": events}
+    return {"serial": serial_row(db, s), "now": where_now(db, s, p), "events": events}
 
 
-def after_sales(db: Session, s: Serial) -> list[dict]:
+def after_sales(db: Session, s: Serial, p: Principal) -> list[dict]:
     """Warranty decisions, service requests and maintenance alerts (never a code's value)."""
     out = []
-    for r in db.scalars(select(WarrantyRegistration).where(WarrantyRegistration.serial_id == s.id)):
+    # Each group only for those allowed to see it: stock.view alone opens the timeline.
+    regs = select(WarrantyRegistration).where(WarrantyRegistration.serial_id == s.id)
+    for r in db.scalars(regs) if p.can("warranty.view") else []:
         doc = {"type": "warranty", "id": str(r.id), "number": r.number}
         out.append(
             {"at": r.created_at, "kind": "warranty", "title": "Warranty registered", "doc": doc}
@@ -200,9 +202,13 @@ def after_sales(db: Session, s: Serial) -> list[dict]:
                     "doc": doc,
                 }
             )
-    for sr in db.scalars(
-        select(ServiceRequest).where(
-            (ServiceRequest.serial_id == s.id) | (ServiceRequest.replacement_serial_id == s.id)
+    for sr in (
+        []
+        if not p.can("service.view")
+        else db.scalars(
+            select(ServiceRequest).where(
+                (ServiceRequest.serial_id == s.id) | (ServiceRequest.replacement_serial_id == s.id)
+            )
         )
     ):
         doc = {"type": "service", "id": str(sr.id), "number": sr.number}
@@ -227,7 +233,8 @@ def after_sales(db: Session, s: Serial) -> list[dict]:
                     "doc": doc,
                 }
             )
-    for a in db.scalars(select(MaintenanceAlert).where(MaintenanceAlert.serial_id == s.id)):
+    alerts = select(MaintenanceAlert).where(MaintenanceAlert.serial_id == s.id)
+    for a in db.scalars(alerts) if p.can("codes.view") else []:
         doc = {"type": "alert", "id": str(a.id), "number": a.number}
         out.append(
             {
@@ -251,7 +258,7 @@ def after_sales(db: Session, s: Serial) -> list[dict]:
     return out
 
 
-def where_now(db: Session, s: Serial) -> dict:
+def where_now(db: Session, s: Serial, p: Principal) -> dict:
     """Where the battery is: a bank position, a site, or a stock location."""
     out = {
         "status": s.status,
@@ -269,10 +276,12 @@ def where_now(db: Session, s: Serial) -> dict:
         out["site"] = site_ref(db, db.get(Site, s.site_id))
     if s.location_id:
         out["location"] = label(db, db.get(Location, s.location_id))
-    out["warranty"], out["amc"] = (
-        warranty_of(db, s.id),
-        [{"id": c["id"], "number": c["number"], "ends_on": c["ends_on"]} for c in amc_of(db, s)],
-    )
+    if p.can("warranty.view"):
+        out["warranty"] = warranty_of(db, s.id)
+    if p.can("amc.view"):
+        out["amc"] = [
+            {"id": c["id"], "number": c["number"], "ends_on": c["ends_on"]} for c in amc_of(db, s)
+        ]
     return out
 
 
