@@ -13,7 +13,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field, StringConstraints
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -562,7 +562,10 @@ def revise_quotation(
     qt, r = _current(
         db, quotation_id, body.version, ("submitted", "approved", "rejected", "declined", "expired")
     )
-    new = QuotationRevision(quotation_id=qt.id, rev=r.rev + 1, editors=[p.user.id], currency=r.currency,
+    shapers = list(
+        dict.fromkeys([*r.editors, *([r.submitted_by] if r.submitted_by else []), p.user.id])
+    )
+    new = QuotationRevision(quotation_id=qt.id, rev=r.rev + 1, editors=shapers, currency=r.currency,
                             valid_until=None, terms=r.terms, scope_notes=r.scope_notes,
                             installation_date=r.installation_date, commissioning_date=r.commissioning_date,
                             handover_date=r.handover_date)  # fmt: skip
@@ -645,17 +648,44 @@ def convert(quotation_id: uuid.UUID, body: ConvertIn, p: require("sales.create")
 # ---------- sales orders ----------
 
 
-def reservations_of(db: Session, so: SalesOrder) -> dict:
-    """Active stock reserved per item for this order (and its project), remaining quantity."""
-    refs = [("sales_order", str(so.id))] + (
-        [("project", str(so.project_id))] if so.project_id else []
-    )
+def _own(db: Session, ref_type: str, ref_id: str) -> dict:
+    return dict(db.execute(select(Reservation.item_id, func.sum(Reservation.qty - Reservation.qty_used))
+                           .where(Reservation.ref_type == ref_type, Reservation.ref_id == ref_id,
+                                  Reservation.status == "active").group_by(Reservation.item_id)).all())  # fmt: skip
+
+
+def _pending(db: Session, so: SalesOrder) -> dict:
     out: dict = {}
-    for ref_type, ref_id in refs:
-        for item_id, q in db.execute(select(Reservation.item_id, func.sum(Reservation.qty - Reservation.qty_used))
-                                     .where(Reservation.ref_type == ref_type, Reservation.ref_id == ref_id,
-                                            Reservation.status == "active").group_by(Reservation.item_id)):  # fmt: skip
-            out.setdefault(ref_type, {})[item_id] = q
+    for ln in db.scalars(select(SalesOrderLine).where(SalesOrderLine.order_id == so.id)):
+        if ln.line_type in GOODS:
+            out[ln.item_id] = out.get(ln.item_id, ZERO) + ln.qty - ln.qty_dispatched
+    return out
+
+
+def reservations_of(db: Session, so: SalesOrder) -> dict:
+    """What is still reserved for this order: its own reservations, and its share of its project's.
+    A project's reservation is shared once across the project's open orders, oldest order first,
+    so two orders never both count the same reserved units."""
+    out = {"sales_order": _own(db, "sales_order", str(so.id))}
+    if so.project_id:
+        pool = _own(db, "project", str(so.project_id))
+        earlier = db.scalars(select(SalesOrder).where(
+            SalesOrder.project_id == so.project_id, SalesOrder.id != so.id,
+            SalesOrder.status.in_(("open", "partly_dispatched")),
+            or_(SalesOrder.created_at < so.created_at, and_(SalesOrder.created_at == so.created_at, SalesOrder.id < so.id)))
+            .order_by(SalesOrder.created_at, SalesOrder.id))  # fmt: skip
+        for other in earlier:
+            own = _own(db, "sales_order", str(other.id))
+            for item_id, need in _pending(db, other).items():
+                pool[item_id] = pool.get(item_id, ZERO) - min(
+                    max(need - own.get(item_id, ZERO), ZERO), pool.get(item_id, ZERO)
+                )
+        mine = _pending(db, so)
+        out["project"] = {
+            i: min(q, max(mine.get(i, ZERO) - out["sales_order"].get(i, ZERO), ZERO))
+            for i, q in pool.items()
+            if q > 0
+        }
     return out
 
 

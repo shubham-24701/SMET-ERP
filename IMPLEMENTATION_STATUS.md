@@ -50,6 +50,7 @@ Nothing here has been sandbox-tested against an external provider or production-
 | Sizing rules | No formula is built in. SMET enters rules (named inputs, an arithmetic formula, a unit) and marks them confirmed; the evaluator accepts only numbers, inputs, + − × ÷, brackets and ceil/floor/round/max/min | `::test_formulas_are_arithmetic_only` |
 | Requirement sheets | Per project or site; quantities typed in or worked out by a rule, with inputs and result kept on the line (and marked if the typed quantity differs); engineering review by someone who didn't prepare it; approved sheets never change; a new approval supersedes the old | `::test_a_project_runs_from_survey_to_approved_requirements` |
 | Material list | Approved requirements against stock: reserve, request purchase of what is short, plan assembly, prepare the project quotation; linked documents listed on the project | same |
+| Independent review | 3 high (reservations revived by a cancellation; project reservations counted twice), 5 medium and 6 low findings; all high and medium fixed with regression tests (migration 0006) | `test_review_p4.py` |
 | Screens | Enquiries, quotations (revisions, approval, answer, conversion), sales orders, dispatch (to send, plan with serial picker, send, delivery, cancel, delivery note), projects (sites, sheets with rule calculator, material list, milestones, tasks, changes, notes), sizing rules | Playwright `phase4.spec.ts` (two people in two browsers; phone width checked) |
 
 ## Phases 2–3: what was built
@@ -90,13 +91,13 @@ Nothing here has been sandbox-tested against an external provider or production-
 | Database setup | `python -m app.setup_db`: two databases, least-privilege logins, `.env` written | used by CI on Linux and Windows |
 | Web app | Sign-in, setup, forced password change, overview (team setup, roles in use, recent changes), users (count-card filters, add/edit/deactivate/reset), roles editor, audit log, company settings, system health; light/dark/system theme; phone layout; permission-aware navigation | Vitest (5), Playwright (2 journeys), design inspector at 1440/768/390 |
 
-## Verification results (2026-10-30)
+## Verification results (2026-10-30, end of Phase 4)
 
 See [docs/TEST_RESULTS.md](docs/TEST_RESULTS.md) for the commands and outputs.
 
-- Backend: 82 pytest tests passed (53 Phase 1, 19 Phases 2–3, 10 review regressions); ruff clean; deprecation warnings treated as errors.
+- Backend: 100 pytest tests passed (53 Phase 1, 29 Phases 2–3, 18 Phase 4 incl. review regressions); ruff clean; deprecation warnings treated as errors.
 - Frontend: oxlint and TypeScript clean, 7 Vitest tests, production build OK.
-- Browser: 3 Playwright journeys passed locally (Chromium), including the Phase 2–3 journey.
+- Browser: 4 Playwright journeys passed locally (Chromium), including Phases 2–3 and Phase 4.
 - CI (GitHub Actions, public repository since 2026-10-30): every job green on the Phase 1 branch and on
   this branch: Ubuntu and Windows backends, frontend, Edge on Windows, secret scan, dependency audit.
 - Independent review of Phases 2–3: 2 high, 6 medium and 9 low findings; every one fixed or recorded with its reason (TEST_RESULTS.md).

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { api } from './api'
 import { useAction, useApi, useCan, useMe, useWhen } from './lib'
-import { Back, Facts, LocationOptions, Status, day, newKey, num, qty, serialList, useWarehouses, type Page, type Ref } from './ops'
+import { Back, Facts, LocationOptions, Status, day, newKey, num, qty, serialList, today, useWarehouses, type Page, type Ref } from './ops'
 import { Dialog, Field, FormError, Logo, PageHead, PageState, Pager, SelectField, TextareaField } from './ui'
 
 type PlanRow = { order: { id: string; number: string }; customer: { name: string }; delivery_date: string | null; line_id: string; item: Ref; pending: number; planned: number; reserved: number; free: number; ready: number }
@@ -227,7 +227,7 @@ export function DispatchPage() {
           }}>
             <div className="grid-fields">
               <Field label="Received by" name="received_by" required maxLength={160} />
-              <Field label="On" name="delivered_on" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} />
+              <Field label="On" name="delivered_on" type="date" required defaultValue={today()} />
             </div>
             <p className="hint">Leave a line empty if it arrived complete. Refused goods come back to the customer-returns area and are owed again on the order.</p>
             {d.lines!.map((l) => {

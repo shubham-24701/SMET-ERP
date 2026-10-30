@@ -15,7 +15,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import AfterValidator, BaseModel, Field, StringConstraints
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -88,18 +88,23 @@ def check_expression(expr: str, names: set[str]) -> ast.Expression:
         tree = ast.parse(expr, mode="eval")
     except SyntaxError:
         raise field_error("expression", "Not a valid formula") from None
+    called = {id(n.func) for n in ast.walk(tree) if isinstance(n, ast.Call)}
     for node in ast.walk(tree):
         if not isinstance(node, _NODES):
             raise field_error("expression", f"Not allowed in a formula: {type(node).__name__}")
-        if isinstance(node, ast.Constant) and (
-            isinstance(node.value, bool) or not isinstance(node.value, (int, float))
-        ):
-            raise field_error("expression", "Only numbers are allowed")
+        if isinstance(node, ast.Constant):
+            if isinstance(node.value, bool) or not isinstance(node.value, (int, float)):
+                raise field_error("expression", "Only numbers are allowed")
+            if abs(node.value) > 1e12:
+                raise field_error("expression", "Numbers in a formula stay below 10^12")
         if isinstance(node, ast.Call) and (
             not isinstance(node.func, ast.Name) or node.func.id not in FUNCS or node.keywords
         ):
             raise field_error("expression", "Allowed functions: ceil, floor, round, max, min")
-        if isinstance(node, ast.Name) and node.id not in names and node.id not in FUNCS:
+        # a function name only as a call, an input name only as a value
+        if isinstance(node, ast.Name) and (
+            node.id not in FUNCS if id(node) in called else node.id not in names
+        ):
             raise field_error("expression", f"Unknown input: {node.id}")
     return tree
 
@@ -136,7 +141,12 @@ def evaluate(expr: str, values: dict[str, float]) -> float:
                         "expression", f"{n.func.id}() needs other arguments"
                     ) from None
 
-    result = run(tree)
+    try:
+        result = run(tree)
+    except OverflowError:
+        raise field_error(
+            "inputs", "The formula gives a number too large with these inputs"
+        ) from None
     if (
         not isinstance(result, (int, float))
         or math.isnan(result)
@@ -151,6 +161,8 @@ def _unique_inputs(rows: list) -> list:
     names = [r.name for r in rows]
     if len(set(names)) != len(names):
         raise ValueError("Each input name only once")
+    if clash := set(names) & set(FUNCS):
+        raise ValueError(f"{sorted(clash)[0]} is a function name; choose another input name")
     return rows
 
 
@@ -231,6 +243,11 @@ def update_rule(
     for k, v in body.model_dump(exclude={"version", "reason", "inputs"}).items():
         setattr(r, k, v)
     r.inputs, r.version = [i.model_dump() for i in body.inputs], r.version + 1
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise field_error("name", "A rule with this name exists") from None
     record(db, p.user, "sizing_rule.update", "sizing_rule", r.id, f"Sizing rule {r.name} changed",
            diff({k: before[k] for k in ("expression", "inputs", "confirmed", "active")},
                 {k: getattr(r, k) for k in ("expression", "inputs", "confirmed", "active")}), body.reason)  # fmt: skip
@@ -456,6 +473,9 @@ def update_project(
         f
         for f in ("name", "status", "scope", "contacts", "manager_id", "start_date", "end_date")
         if f in body.model_fields_set
+        and (
+            getattr(body, f) is not None or f in ("manager_id", "start_date", "end_date")
+        )  # required fields: null = unchanged
     ]
     before = {f: getattr(pr, f) for f in fields}
     for f in fields:
@@ -605,7 +625,7 @@ def update_task(task_id: uuid.UUID, body: TaskPatch, p: require("projects.create
     _active_user(db, body.assignee_id, "assignee_id")
     before = {"status": t.status, "assignee_id": str(t.assignee_id), "due_date": str(t.due_date)}
     for f in ("status", "assignee_id", "due_date"):
-        if f in body.model_fields_set:
+        if f in body.model_fields_set and (f != "status" or body.status is not None):
             setattr(t, f, getattr(body, f))
     t.version += 1
     record(db, p.user, "task.update", "project", t.project_id, f"Task {t.title}: {t.status}",
@@ -832,6 +852,12 @@ def decide_sheet(sheet_id: uuid.UUID, verdict: Literal["approve", "reject"], bod
         )
     if verdict == "reject" and not body.reason:
         raise field_error("reason", "Say what to fix")
+    newer = db.scalar(select(RequirementSheet.version_no).where(
+        RequirementSheet.project_id == s.project_id, RequirementSheet.status == "approved",
+        RequirementSheet.version_no > s.version_no,
+        RequirementSheet.site_id.is_(None) if s.site_id is None else RequirementSheet.site_id == s.site_id))  # fmt: skip
+    if verdict == "approve" and newer:
+        raise conflict(f"Version {newer} is already approved: draft a new version instead")
     if verdict == "approve":
         for old in db.scalars(select(RequirementSheet).where(
                 RequirementSheet.project_id == s.project_id, RequirementSheet.status == "approved",
@@ -869,8 +895,12 @@ def materials(db: Session, pr: Project) -> list[dict]:
     if not need:
         return []
     items = {i.id: i for i in db.scalars(select(Item).where(Item.id.in_(list(need))))}
-    reserved = dict(db.execute(select(Reservation.item_id, func.sum(Reservation.qty)).where(
-        Reservation.ref_type == "project", Reservation.ref_id == str(pr.id),
+    orders = [
+        str(i) for i in db.scalars(select(SalesOrder.id).where(SalesOrder.project_id == pr.id))
+    ]
+    reserved = dict(db.execute(select(Reservation.item_id, func.sum(Reservation.qty)).where(  # the project's and its orders'
+        or_(and_(Reservation.ref_type == "project", Reservation.ref_id == str(pr.id)),
+            and_(Reservation.ref_type == "sales_order", Reservation.ref_id.in_(orders))),
         Reservation.status.in_(("active", "used"))).group_by(Reservation.item_id)).all())  # fmt: skip
     out = []
     for item_id, q in need.items():
@@ -886,7 +916,7 @@ class KeyIn(BaseModel):
 
 @router.post("/projects/{project_id}/reserve")
 def reserve_for_project(
-    project_id: uuid.UUID, body: KeyIn, p: require("projects.create", "stock.create"), db: DB
+    project_id: uuid.UUID, body: KeyIn, p: require("projects.create"), db: DB
 ) -> dict:
     """Reserve free stock for approved requirements not yet reserved."""
     if (prev := claim_key(db, body.key, "project_reserve")) is not None:

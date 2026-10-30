@@ -110,3 +110,8 @@ password (`/auth/me`, `/auth/password`).
 Templates gaining Phase 4 permissions: Sales Officer, Sales Approver, Project Manager (above); Warehouse
 Officer gets sales.view and dispatch.view/create; Operations Manager gets projects.approve; System
 Administrator gets projects.configure and projects.view.
+
+Raising a purchase request from a sales order (`sales.create`) or a project (`projects.create`) is
+intended: a purchase request is only a request; the purchase order it may lead to still needs
+`purchasing.create` and an approver. An order reserves for itself with `sales.create`, a project with
+`projects.create`.

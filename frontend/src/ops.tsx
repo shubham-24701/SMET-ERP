@@ -22,6 +22,9 @@ export const money = (v: number, currency: string) =>
 export const day = (iso: string | null | undefined) =>
   iso ? new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
 
+/** Today in the browser's own time zone, as yyyy-mm-dd (UTC would be yesterday just after midnight in Dubai). */
+export const today = () => new Date().toLocaleDateString('en-CA')
+
 /** A fresh key per form: the server records a repeated submit (double click, retry) only once. */
 export const newKey = () => crypto.randomUUID().replaceAll('-', '')
 

@@ -1073,4 +1073,6 @@ class DispatchLine(Base):
     qty_damaged: Mapped[float] = mapped_column(QTY, server_default="0")  # accepted but damaged
     rejected_serials: Mapped[list[str]] = mapped_column(ARRAY(String(60)), server_default="{}")
     from_reserved: Mapped[float] = mapped_column(QTY, server_default="0")  # given back if cancelled
+    # [{reservation_id, qty}] taken when sent: exactly what a cancellation gives back
+    reservation_use: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
     note: Mapped[str] = mapped_column(String(300), server_default="")

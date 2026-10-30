@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { api } from './api'
 import { useAction, useApi, useCan, useMe, useWhen } from './lib'
-import { Back, Facts, ItemOptions, Status, day, money, newKey, num, qty, useItems, useWarehouses, type Page, type Ref } from './ops'
+import { Back, Facts, ItemOptions, Status, day, money, newKey, num, qty, today, useItems, useWarehouses, type Page, type Ref } from './ops'
 import { Dialog, Field, FormError, PageHead, PageState, Pager, SelectField, TextareaField } from './ui'
 
 type PartyRef = { id: string; code: string; name: string }
@@ -336,7 +336,7 @@ export function QuotationPage() {
             </fieldset>
             <Field label="Who answered" name="by" required maxLength={160} />
             <Field label="Their reference (e.g. purchase order)" name="ref" maxLength={60} />
-            <Field label="On" name="on" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} />
+            <Field label="On" name="on" type="date" required defaultValue={today()} />
             <TextareaField label="Note" name="reason" maxLength={500} />
             <FormError message={action.error} />
             <button className="btn btn-primary" disabled={!!action.busy}>Record answer</button>

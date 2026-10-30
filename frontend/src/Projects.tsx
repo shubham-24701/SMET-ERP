@@ -386,7 +386,7 @@ function RuleForm({ rule, onDone }: { rule: Rule | null; onDone: () => void }) {
       e.preventDefault()
       const fd = new FormData(e.currentTarget)
       const body = { name: fd.get('name'), description: fd.get('description'), expression: fd.get('expression'), result_unit: fd.get('result_unit'),
-        confirmed: fd.get('confirmed') === 'on', active: fd.get('active') !== null ? fd.get('active') === 'on' : true, inputs: inputs.filter((i) => i.name) }
+        confirmed: fd.get('confirmed') === 'on', active: rule ? fd.get('active') === 'on' : true, inputs: inputs.filter((i) => i.name) }
       setFields({})
       void action.run('save', () => api(rule ? `/sizing-rules/${rule.id}` : '/sizing-rules', { method: rule ? 'PUT' : 'POST', body: rule ? { ...body, version: rule.version, reason: fd.get('reason') } : body })
         .catch((err) => { setFields((err as { fields?: Record<string, string> }).fields ?? {}); throw err }))

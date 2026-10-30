@@ -276,6 +276,9 @@ def _set(db: Session, d: Dispatch, body: DispatchIn) -> None:
 
 @router.post("/dispatches", status_code=status.HTTP_201_CREATED)
 def plan_dispatch(body: DispatchIn, p: require("dispatch.create"), db: DB) -> dict:
+    get_or_404(db, SalesOrder, body.order_id, "Sales order")
+    if db.get(Warehouse, body.warehouse_id) is None:
+        raise field_error("warehouse_id", "Choose an active warehouse")
     d = Dispatch(
         number=next_number(db, "dispatch"),
         order_id=body.order_id,
@@ -358,19 +361,22 @@ def send(dispatch_id: uuid.UUID, body: Go, p: require("dispatch.create"), db: DB
         )
         if src.purpose != "available" or not src.active:
             raise conflict(f"{label(db, src)} is not available stock")
-        left, used = ln.qty, ZERO
+        left, used, uses = ln.qty, ZERO, []
         for r in _reservation(db, so, item.id):
             take = min(left, r.qty - r.qty_used)
+            if not take:
+                continue
             r.qty_used += take
             if r.qty_used >= r.qty:
                 r.status = "used"
             r.version += 1
+            uses.append({"reservation_id": str(r.id), "qty": str(take)})
             left, used = left - take, used + take
             if not left:
                 break
         if left:
             check_free(db, item, left)
-        ln.from_reserved = used
+        ln.from_reserved, ln.reservation_use = used, uses
         ln.location_id = src.id
         if item.tracking == "serial":
             for s in serials_at(db, item, ln.serials, src, ("available",)):
@@ -443,6 +449,10 @@ def deliver(
                 if set(x.rejected_serials) - set(ln.serials):
                     raise field_error(
                         "rejected_serials", "Only serials on this dispatch can be refused"
+                    )
+                if x.qty_rejected:
+                    raise field_error(
+                        "qty_rejected", f"{item.code}: name the refused serial numbers instead"
                     )
                 rejected = Decimal(len(set(x.rejected_serials)))
             else:
@@ -529,17 +539,14 @@ def cancel(dispatch_id: uuid.UUID, body: CancelIn, p: require("dispatch.create")
             else:
                 post(db, p.user, item=item, qty=ln.qty, src=None, dst=dst, kind="dispatch_cancel", doc=doc, lot=ln.lot,
                      reason=body.reason)  # fmt: skip
-            give = ln.from_reserved
-            for r in reversed(db.scalars(select(Reservation).where(  # give back to the most recent first
-                    Reservation.item_id == item.id, Reservation.ref_type.in_(("sales_order", "project")),
-                    Reservation.ref_id.in_([str(so.id), str(so.project_id)]),
-                    Reservation.status.in_(("active", "used"))).order_by(Reservation.created_at).with_for_update()).all()):  # fmt: skip
-                back = min(give, r.qty_used)
-                r.qty_used -= back
-                r.status, r.version = "active", r.version + 1
-                give -= back
-                if not give:
-                    break
+            # Exactly what this line took goes back to the same reservations, unless the order
+            # (or the reservation) has been closed since: then the goods simply return to free stock.
+            if so.status in ("open", "partly_dispatched", "dispatched"):
+                for use in ln.reservation_use:
+                    r = db.get(Reservation, uuid.UUID(use["reservation_id"]), with_for_update=True)
+                    if r is not None and r.status in ("active", "used"):
+                        r.qty_used -= min(Decimal(use["qty"]), r.qty_used)
+                        r.status, r.version = "active", r.version + 1
             order_lines[ln.order_line_id].qty_dispatched -= ln.qty
         refresh_order_status(db, so)
         so.version += 1

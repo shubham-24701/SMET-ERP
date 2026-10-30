@@ -4,7 +4,7 @@ Conventions: UUID primary keys; `timestamptz` in UTC; `version` on editable reco
 locking); history is never rewritten: corrections are new rows (stock movements, audit events).
 Migrations in `backend/migrations/versions/` are the authoritative schema (0001 foundation; 0002
 hardens the audit trigger and protects `alembic_version`; 0003 Phases 2–3; 0004 review fixes:
-longer movement document numbers, order editors, count counters, returns not replaced; 0005 Phase 4).
+longer movement document numbers, order editors, count counters, returns not replaced; 0005 Phase 4; 0006 dispatch lines remember the reservations they used).
 
 ## Phase 1 tables
 
