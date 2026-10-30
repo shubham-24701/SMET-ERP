@@ -159,13 +159,29 @@ SignedIn = Annotated[Principal, Depends(_signed_in)]
 DB = Annotated[Session, Depends(get_db)]
 
 
+def watched(perm: str) -> bool:
+    """Refusals worth keeping in the audit log: approvals, corrections, codes, exports, settings,
+    users and roles (an attempt there is a signal; an ordinary 403 is just a hidden button)."""
+    return perm.split(".")[1] in ("approve", "correct", "sensitive", "configure", "export") or perm.startswith(("users.", "roles."))
+
+
+def audit_denial(user: User, missing: list[str]) -> None:
+    from app.db import SessionLocal  # its own transaction: the refused request rolls back
+
+    with SessionLocal() as db:
+        record(db, user, "access.denied", "user", user.id, f"Refused: needs {', '.join(missing)}")
+        db.commit()
+
+
 def require(*perms: str):
     """`p: require("users.edit")` — signed in, password changed, and holding every permission."""
 
     def check(p: SignedIn) -> Principal:
         if p.user.must_change_password:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Change your password before continuing")
-        if not all(p.can(x) for x in perms):
+        if missing := [x for x in perms if not p.can(x)]:
+            if any(watched(x) for x in missing):
+                audit_denial(p.user, missing)
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Your roles do not allow this action")
         return p
 

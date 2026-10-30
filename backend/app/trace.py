@@ -17,8 +17,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import any_, select
 from sqlalchemy.orm import Session
 
-from app.audit import request_info
-from app.auth import DB, rate_limit, require
+from app.auth import DB, require
 from app.config import get_settings
 from app.installation import site_ref
 from app.inventory import label, serial_row
@@ -43,7 +42,6 @@ from app.projects import _names
 from app.sales import party_ref
 
 router = APIRouter(tags=["traceability"])
-public = APIRouter(prefix="/public", tags=["public"])
 TOKEN = re.compile(r"(?:/v/)?([0-9a-f]{32})/?$")
 MOVE_WORDS = {
     "receipt": "Received from the supplier", "transfer": "Moved", "issue": "Issued to assembly",
@@ -199,25 +197,3 @@ def labels(ids: Annotated[str, Query(max_length=4000)], _: require("stock.view")
             out.append({"id": s.id, "serial": s.serial, "item": item_ref(i), "supplier_serial": s.supplier_serial,
                         "url": url, "qr": qr})  # fmt: skip
     return {"items": out, "public_base_url": get_settings().public_base_url}
-
-
-@public.get("/verify/{token}")
-def verify(token: str, db: DB) -> dict:
-    """What anyone holding the battery may see. Rate-limited so labels can't be guessed by trying."""
-    rate_limit(
-        f"verify:{request_info.get().get('ip', '')}",
-        30,
-        60,
-        "Too many checks; wait a minute and try again",
-    )
-    if not re.fullmatch(r"[0-9a-f]{32}", token):
-        raise HTTPException(404, "We can't find this label")
-    s = db.scalar(select(Serial).where(Serial.qr_token == token))
-    if s is None:
-        raise HTTPException(404, "We can't find this label")
-    item = db.get(Item, s.item_id)
-    return {
-        "serial": s.serial,
-        "product": item.name,
-        "status": PUBLIC_STATUS.get(s.status, "not_in_service"),
-    }

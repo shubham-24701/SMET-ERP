@@ -1,3 +1,4 @@
+import base64
 import os
 import uuid
 
@@ -10,6 +11,9 @@ os.environ |= {
     "ALLOWED_HOSTS": '["127.0.0.1", "localhost", "testserver"]',  # testserver: TestClient's host
     "API_DOCS": "true",  # on so the route list (openapi) can drive the security matrix
     "SESSION_IDLE_MINUTES": "60",
+    "CODES_KEY": base64.urlsafe_b64encode(
+        b"test-only " * 3 + b"!!"
+    ).decode(),  # obviously not a real key
 }
 
 import pytest  # noqa: E402
