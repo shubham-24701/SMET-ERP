@@ -17,6 +17,7 @@ from decimal import Decimal
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import Response
 from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import case, func, or_, select, text, update
@@ -74,6 +75,8 @@ Serials = Annotated[list[SerialNo], Field(max_length=1000)]
 
 ZERO = Decimal(0)
 GONE = ("consumed", "written_off", "returned_to_supplier")  # no longer in SMET's stock
+# Units a correction may write off: not those an assembly order is working with.
+CORRECTABLE = ("available", "awaiting_inspection", "on_hold", "rejected")
 # The status a serial takes when it lands in a location of each purpose (adjustments, counts).
 STATUS_BY_PURPOSE = {"available": "available", "inspection": "awaiting_inspection",
                      "quarantine": "on_hold", "rejected": "rejected", "assembly": "issued",
@@ -105,9 +108,7 @@ def claim_key(db: Session, key: str, scope: str) -> dict | None:
 
 
 def remember(db: Session, key: str, result: dict) -> dict:
-    db.get(OperationKey, key).result = {
-        k: str(v) if isinstance(v, uuid.UUID) else v for k, v in result.items()
-    }
+    db.get(OperationKey, key).result = jsonable_encoder(result)
     return result
 
 
@@ -126,6 +127,15 @@ def active_location(db: Session, location_id, what="Location") -> Location:
     loc = db.get(Location, location_id)
     if loc is None or not loc.active:
         raise field_error("location_id", f"{what}: choose an active location")
+    return loc
+
+
+def outside_assembly(loc: Location) -> Location:
+    """The assembly floor holds what orders have issued; it changes only through those orders
+    (issue, build, return), so transfers, corrections and counts stay out of it."""
+    if loc.purpose == "assembly":
+        raise field_error("location_id", "The assembly floor changes only through assembly orders: return "
+                          "materials from the order first")  # fmt: skip
     return loc
 
 
@@ -256,6 +266,12 @@ def serials_at(
 def new_serial(db: Session, item: Item, number: str, status_: str, **kw) -> Serial:
     if db.scalar(select(Serial.id).where(Serial.serial == number)):
         raise field_error("serials", f"{number} is already registered")
+    if kw.get("supplier_serial") and db.scalar(select(Serial.id).where(
+            Serial.item_id == item.id, Serial.supplier_serial == kw["supplier_serial"])):  # fmt: skip
+        raise field_error(
+            "serials",
+            f"Supplier serial {kw['supplier_serial']} is already registered for {item.code}",
+        )
     s = Serial(serial=number, item_id=item.id, status=status_, **kw)
     db.add(s)
     db.flush()
@@ -279,7 +295,8 @@ def on_order(db: Session, item_ids) -> dict:
     rows = db.execute(
         select(PurchaseOrderLine.item_id,
                func.sum(func.greatest(PurchaseOrderLine.qty_ordered - PurchaseOrderLine.qty_accepted
-                                      - PurchaseOrderLine.qty_held - PurchaseOrderLine.qty_awaiting, 0)))
+                                      - PurchaseOrderLine.qty_held - PurchaseOrderLine.qty_awaiting
+                                      - PurchaseOrderLine.qty_not_replaced, 0)))
         .join(PurchaseOrder, PurchaseOrder.id == PurchaseOrderLine.po_id)
         .where(PurchaseOrderLine.item_id.in_(item_ids),
                PurchaseOrder.status.in_(("submitted", "approved", "partly_received")))
@@ -617,6 +634,7 @@ def transfer(body: TransferIn, p: require("stock.create"), db: DB) -> dict:
     )
     if src.id == dst.id:
         raise field_error("to_location_id", "Choose a different location")
+    outside_assembly(src)
     if src.purpose != dst.purpose:
         raise field_error("to_location_id", f"Transfers stay within one use ({PURPOSE_LABEL[src.purpose]}). "
                           "Status changes go through receiving, inspection or a correction.")  # fmt: skip
@@ -738,7 +756,7 @@ def create_reservation(body: ReservationIn, p: require("stock.create"), db: DB) 
     record(db, p.user, "reservation.create", "reservation", r.id,
            f"{body.qty.normalize():f} {item.unit_code} {item.code} reserved for {body.ref_label}", reason=body.reason)  # fmt: skip
     row = reservation_row(db, r, item)
-    remember(db, body.key, {"id": r.id})
+    remember(db, body.key, row)
     db.commit()
     return row
 
@@ -784,6 +802,7 @@ class AdjustmentLineIn(BaseModel):
 
 
 class AdjustmentIn(BaseModel):
+    key: Key
     reason: NeededReason
     lines: Annotated[list[AdjustmentLineIn], Field(min_length=1, max_length=200)]
 
@@ -864,9 +883,11 @@ def get_adjustment(adjustment_id: uuid.UUID, _: require("stock.view"), db: DB) -
 
 @router.post("/adjustments", status_code=status.HTTP_201_CREATED)
 def request_adjustment(body: AdjustmentIn, p: require("adjustments.create"), db: DB) -> dict:
+    if (prev := claim_key(db, body.key, "adjustment")) is not None:
+        return prev
     items = lock_items(db, [ln.item_id for ln in body.lines])
     for ln in body.lines:
-        _check_adjustment_line(db, ln, items, active_location(db, ln.location_id))
+        _check_adjustment_line(db, ln, items, outside_assembly(active_location(db, ln.location_id)))
     a = StockAdjustment(
         number=next_number(db, "adjustment"), reason=body.reason, requested_by=p.user.id
     )
@@ -878,8 +899,10 @@ def request_adjustment(body: AdjustmentIn, p: require("adjustments.create"), db:
                                    serials_out=ln.serials_out) for ln in body.lines)  # fmt: skip
     record(db, p.user, "adjustment.request", "adjustment", a.id, f"{a.number} requested ({len(body.lines)} lines)",
            reason=body.reason)  # fmt: skip
+    row = adjustment_row(db, a, lines=True)
+    remember(db, body.key, row)
     db.commit()
-    return adjustment_row(db, a, lines=True)
+    return row
 
 
 def _decidable(db: Session, p: Principal, adjustment_id, version: int) -> StockAdjustment:
@@ -888,7 +911,15 @@ def _decidable(db: Session, p: Principal, adjustment_id, version: int) -> StockA
         raise stale()
     if a.status != "pending":
         raise conflict(f"{a.number} was already {a.status}")
-    if a.requested_by == p.user.id and not rules(db)["adjustment_self_approval"]:
+    counted = (
+        db.scalar(select(StockCount.counters).where(StockCount.id == a.count_id))
+        if a.count_id
+        else []
+    )
+    if (
+        p.user.id in {a.requested_by, *(counted or [])}
+        and not rules(db)["adjustment_self_approval"]
+    ):
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, "Someone else must decide on a correction you asked for"
         )
@@ -937,7 +968,7 @@ def _apply_line(
             item,
             serials_out,
             loc,
-            tuple(STATUS_BY_PURPOSE.values()) + ("under_assembly", "rework"),
+            CORRECTABLE,
         ):
             post(
                 db,
@@ -951,12 +982,11 @@ def _apply_line(
                 serial=s,
             )
             s.status = "written_off"
+    if serials_in and item.assembled and loc.purpose == "available":
+        raise conflict(f"A found {item.code} battery can't go straight into available stock: reject this, then "
+                       "ask for a correction into quarantine so it is inspected")  # fmt: skip
     for n in serials_in:
-        status_ = (
-            "under_assembly"
-            if item.assembled and loc.purpose == "assembly"
-            else STATUS_BY_PURPOSE[loc.purpose]
-        )
+        status_ = STATUS_BY_PURPOSE[loc.purpose]
         s = new_serial(db, item, n, status_)
         post(
             db,
@@ -1085,7 +1115,7 @@ def get_count(count_id: uuid.UUID, _: require("stock.view"), db: DB) -> dict:
 @router.post("/counts", status_code=status.HTTP_201_CREATED)
 def start_count(body: CountIn, p: require("stock.create"), db: DB) -> dict:
     """Lists what the books say is in the location now; counters fill in what they find."""
-    loc = active_location(db, body.location_id)
+    loc = outside_assembly(active_location(db, body.location_id))
     c = StockCount(
         number=next_number(db, "stock_count"),
         location_id=loc.id,
@@ -1140,6 +1170,12 @@ def save_count_lines(
             db.add(row)
         row.counted, row.serials_found = counted, serials
     c.version += 1
+    if p.user.id not in c.counters:
+        c.counters = [*c.counters, p.user.id]
+    record(db, p.user, "count.save", "stock_count", c.id, f"{c.number}: {len(body.lines)} lines counted",
+           {"lines": [{"item_id": str(ln.item_id), "lot": ln.lot,
+                       "counted": None if ln.counted is None else str(ln.counted),
+                       "serials_found": ln.serials_found} for ln in body.lines]})  # fmt: skip
     db.commit()
     return count_row(db, c, lines=True)
 

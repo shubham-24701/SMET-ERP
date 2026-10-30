@@ -24,7 +24,7 @@ type POLine = {
 type PO = {
   id: string; number: string; status: string; supplier: PartyRef; currency: string; supplier_ref: string; pr_id: string | null
   link_ref: string; expected_ship: string | null; expected_arrival: string | null; terms: string; notes: string
-  created_by: string; created_by_id: string; submitted_by: string | null; submitted_by_id: string | null; submitted_at: string | null
+  created_by: string; created_by_id: string; editor_ids: string[]; submitted_by: string | null; submitted_by_id: string | null; submitted_at: string | null
   decided_by: string | null; decided_at: string | null; decision_reason: string; total: number; created_at: string; version: number
   lines?: POLine[]; receipts?: { id: string; number: string; delivery_ref: string; created_at: string }[]
   returns?: { id: string; number: string; reason: string; created_at: string; replacement_expected: boolean }[]
@@ -402,7 +402,7 @@ function Decide({ po, line, onDone }: { po: PO; line: POLine; onDone: () => void
 function ReturnGoods({ po, onDone }: { po: PO; onDone: () => void }) {
   const { warehouses } = useWarehouses()
   const lines = po.lines!.filter((l) => l.qty_rejected > l.qty_returned)
-  const [rows, setRows] = useState(lines.map((l) => ({ qty: String(l.qty_rejected - l.qty_returned), serials: '' })))
+  const [rows, setRows] = useState(lines.map((l) => ({ qty: String(l.qty_rejected - l.qty_returned), serials: '', lot: '' })))
   const [key] = useState(newKey)
   const action = useAction(onDone)
   return (
@@ -411,7 +411,7 @@ function ReturnGoods({ po, onDone }: { po: PO; onDone: () => void }) {
       const fd = new FormData(e.currentTarget)
       void action.run('save', () => api(`/purchase-orders/${po.id}/returns`, { method: 'POST', body: {
         key, warehouse_id: fd.get('warehouse_id'), reason: fd.get('reason'), replacement_expected: fd.get('replacement') === 'on',
-        lines: lines.map((l, i) => ({ po_line_id: l.id, qty: num(rows[i].qty), serials: serialList(rows[i].serials) })).filter((x) => x.qty),
+        lines: lines.map((l, i) => ({ po_line_id: l.id, qty: num(rows[i].qty), lot: rows[i].lot, serials: serialList(rows[i].serials) })).filter((x) => x.qty),
       } }))
     }}>
       <SelectField label="From the rejected goods of" name="warehouse_id" options={warehouses.filter((w) => w.active).map((w) => [w.id, `${w.code} · ${w.name}`])} />
@@ -419,6 +419,7 @@ function ReturnGoods({ po, onDone }: { po: PO; onDone: () => void }) {
         <div className="line" key={l.id}>
           <span className="line-item"><code>{l.item.code}</code> {qty(l.qty_rejected - l.qty_returned)} rejected, not yet returned</span>
           <label style={{ inlineSize: 110 }}><span className="line-label">Return</span><input type="number" min={0} step="any" value={rows[i].qty} onChange={(e) => setRows(rows.map((r, j) => (j === i ? { ...r, qty: e.target.value } : r)))} /></label>
+          {l.item.tracking === 'lot' && <label style={{ inlineSize: 140 }}><span className="line-label">Lot</span><input value={rows[i].lot} onChange={(e) => setRows(rows.map((r, j) => (j === i ? { ...r, lot: e.target.value } : r)))} /></label>}
           {l.item.tracking === 'serial' && <label className="line-item"><span className="line-label">Serial numbers</span><textarea rows={1} value={rows[i].serials} onChange={(e) => setRows(rows.map((r, j) => (j === i ? { ...r, serials: e.target.value } : r)))} /></label>}
         </div>
       ))}
@@ -453,7 +454,7 @@ export function PurchaseOrderPage() {
   if (!po) return <PageState kind="loading" title="Loading…" />
   const done = () => { setDialog(null); reload() }
   const post = (path: string, body: object = {}) => api(`/purchase-orders/${po.id}/${path}`, { method: 'POST', body: { version: po.version, ...body } }).then(done)
-  const mine = [po.created_by_id, po.submitted_by_id].includes(me.user.id)
+  const mine = [po.created_by_id, po.submitted_by_id, ...po.editor_ids].includes(me.user.id)
   const receivable = ['approved', 'partly_received'].includes(po.status)
   const toDecide = po.lines!.filter((l) => l.qty_awaiting > 0 || l.qty_held > 0)
   return (
@@ -468,7 +469,7 @@ export function PurchaseOrderPage() {
         </>}
         {can('receipts.create') && receivable && <button className="btn btn-primary" onClick={() => setDialog('receive')}>Record delivery</button>}
       </PageHead>
-      {po.status === 'submitted' && mine && can('purchasing.approve') && <p className="notice notice-warning">You raised or submitted this order, so someone else approves it.</p>}
+      {po.status === 'submitted' && mine && can('purchasing.approve') && <p className="notice notice-warning">You raised, changed or submitted this order, so someone else approves it.</p>}
       {po.status === 'rejected' && <p className="notice notice-warning">Rejected by {po.decided_by}: {po.decision_reason}. Edit it and submit again, or cancel it.</p>}
       <Facts rows={[
         ['Status', <Status s={po.status} />], ['Total', money(po.total, po.currency)], ['Expected arrival', day(po.expected_arrival)],

@@ -340,13 +340,14 @@ function RequestCorrection({ onDone }: { onDone: () => void }) {
   const items = useItems()
   const { warehouses } = useWarehouses()
   const [rows, setRows] = useState<Row[]>([{ key: newKey(), item_id: '', location_id: '', qty_change: '', serials_in: '', serials_out: '', lot: '' }])
+  const [key] = useState(newKey)
   const action = useAction(onDone)
   const set = (i: number, k: string, v: string) => setRows(rows.map((r, j) => (j === i ? { ...r, [k]: v } : r)))
   return (
     <form noValidate onSubmit={(e) => {
       e.preventDefault()
       const reason = new FormData(e.currentTarget).get('reason')
-      void action.run('go', () => api('/adjustments', { method: 'POST', body: { reason, lines: rows.filter((r) => r.item_id).map((r) => ({
+      void action.run('go', () => api('/adjustments', { method: 'POST', body: { key, reason, lines: rows.filter((r) => r.item_id).map((r) => ({
         item_id: r.item_id, location_id: r.location_id, lot: r.lot, qty_change: num(r.qty_change) ?? null, serials_in: serialList(r.serials_in), serials_out: serialList(r.serials_out) })) } }))
     }}>
       {rows.map((r, i) => {

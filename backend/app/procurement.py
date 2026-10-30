@@ -81,6 +81,9 @@ def _check_items(db: Session, ids) -> dict:
         raise field_error("item_id", "Unknown item")
     if any(not i.active for i in items.values()):
         raise field_error("item_id", "One of the items is no longer active")
+    if made := [i.code for i in items.values() if i.assembled]:
+        raise field_error("item_id", f"SMET assembles {made[0]}: it comes from an assembly order and its "
+                          "inspection, never from a supplier")  # fmt: skip
     return items
 
 
@@ -328,7 +331,7 @@ def order_from_quote(quote_id: uuid.UUID, p: require("purchasing.create"), db: D
     supplier = _supplier(db, q.supplier_id)
     po = PurchaseOrder(number=next_number(db, "purchase_order"), supplier_id=q.supplier_id, currency=q.currency,
                        supplier_ref=q.supplier_ref, pr_id=q.pr_id, quote_id=q.id, terms=supplier.terms,
-                       created_by=p.user.id)  # fmt: skip
+                       created_by=p.user.id, editors=[p.user.id])  # fmt: skip
     db.add(po)
     db.flush()
     db.add_all(PurchaseOrderLine(po_id=po.id, item_id=ln.item_id, qty_ordered=ln.qty, unit_price=ln.unit_price)
@@ -380,7 +383,9 @@ class POPut(POIn):
 
 
 def outstanding(ln: PurchaseOrderLine) -> Decimal:
-    return max(ln.qty_ordered - ln.qty_accepted - ln.qty_held - ln.qty_awaiting, ZERO)
+    return max(
+        ln.qty_ordered - ln.qty_accepted - ln.qty_held - ln.qty_awaiting - ln.qty_not_replaced, ZERO
+    )
 
 
 def po_row(db: Session, o: PurchaseOrder, full: bool = False) -> dict:
@@ -392,6 +397,7 @@ def po_row(db: Session, o: PurchaseOrder, full: bool = False) -> dict:
            "currency": o.currency, "supplier_ref": o.supplier_ref, "pr_id": o.pr_id, "quote_id": o.quote_id,
            "link_ref": o.link_ref, "expected_ship": o.expected_ship, "expected_arrival": o.expected_arrival,
            "terms": o.terms, "notes": o.notes, "created_by": names.get(o.created_by), "created_by_id": o.created_by,
+           "editor_ids": o.editors,
            "submitted_by": names.get(o.submitted_by), "submitted_by_id": o.submitted_by, "submitted_at": o.submitted_at,
            "decided_by": names.get(o.decided_by), "decided_at": o.decided_at, "decision_reason": o.decision_reason,
            "total": sum((ln.qty_ordered * ln.unit_price for ln in lines), ZERO),
@@ -402,7 +408,8 @@ def po_row(db: Session, o: PurchaseOrder, full: bool = False) -> dict:
                          "unit_price": ln.unit_price, "line_total": ln.qty_ordered * ln.unit_price,
                          "qty_received": ln.qty_received, "qty_awaiting": ln.qty_awaiting,
                          "qty_accepted": ln.qty_accepted, "qty_rejected": ln.qty_rejected, "qty_held": ln.qty_held,
-                         "qty_returned": ln.qty_returned, "qty_outstanding": outstanding(ln)} for ln in lines]  # fmt: skip
+                         "qty_returned": ln.qty_returned, "qty_not_replaced": ln.qty_not_replaced,
+                         "qty_outstanding": outstanding(ln)} for ln in lines]  # fmt: skip
         row["receipts"] = [{"id": r.id, "number": r.number, "delivery_ref": r.delivery_ref, "created_at": r.created_at}
                            for r in db.scalars(select(GoodsReceipt).where(GoodsReceipt.po_id == o.id)
                                                .order_by(GoodsReceipt.created_at))]  # fmt: skip
@@ -466,7 +473,7 @@ def _set_po(db: Session, o: PurchaseOrder, body: POIn) -> None:
 @router.post("/purchase-orders", status_code=status.HTTP_201_CREATED)
 def create_po(body: POIn, p: require("purchasing.create"), db: DB) -> dict:
     o = PurchaseOrder(number=next_number(db, "purchase_order"), supplier_id=body.supplier_id,
-                      currency=body.currency, created_by=p.user.id)  # fmt: skip
+                      currency=body.currency, created_by=p.user.id, editors=[p.user.id])  # fmt: skip
     db.add(o)
     _set_po(db, o, body)
     record(db, p.user, "purchase_order.create", "purchase_order", o.id, f"{o.number} drafted")
@@ -490,6 +497,8 @@ def edit_po(po_id: uuid.UUID, body: POPut, p: require("purchasing.create"), db: 
         raise conflict(f"{o.number} is {o.status}: only drafts and rejected orders can be changed")
     _set_po(db, o, body)
     o.status, o.version = "draft", o.version + 1
+    if p.user.id not in o.editors:
+        o.editors = [*o.editors, p.user.id]
     record(db, p.user, "purchase_order.edit", "purchase_order", o.id, f"{o.number} changed")
     db.commit()
     return po_row(db, o, full=True)
@@ -520,7 +529,10 @@ def _decide(db: Session, p: Principal, po_id, body: VersionReason) -> PurchaseOr
     o = _po(db, po_id, body.version)
     if o.status != "submitted":
         raise conflict(f"{o.number} is {o.status}, not waiting for approval")
-    if p.user.id in (o.created_by, o.submitted_by) and not rules(db)["po_self_approval"]:
+    if (
+        p.user.id in {o.created_by, o.submitted_by, *o.editors}
+        and not rules(db)["po_self_approval"]
+    ):
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
             "Someone else must approve a purchase order you raised or submitted",
@@ -799,6 +811,10 @@ def receive(po_id: uuid.UUID, body: ReceiptIn, p: require("receipts.create"), db
     done = []
     for ln in body.lines:
         pol, item = po_lines[ln.po_line_id], items[po_lines[ln.po_line_id].item_id]
+        if item.assembled:
+            raise conflict(
+                f"{item.code} is assembled by SMET and can't be received from a supplier"
+            )
         due = outstanding(pol)
         if ln.qty > due:
             raise conflict(f"{item.code}: {ln.qty.normalize():f} delivered but only {due.normalize():f} outstanding "
@@ -988,7 +1004,11 @@ def return_to_supplier(
             post(db, p.user, item=item, qty=ln.qty, src=rejected_loc, dst=None, kind="supplier_return", doc=doc,
                  lot=ln.lot, reason=body.reason)  # fmt: skip
         pol.qty_returned += ln.qty
+        if not body.replacement_expected:
+            pol.qty_not_replaced += ln.qty
         db.add(SupplierReturnLine(return_id=sr.id, po_line_id=pol.id, item_id=item.id, qty=ln.qty))
+    if o.status in ("partly_received", "received"):
+        _refresh_status(db, o)  # goods not replaced may complete the order
     o.version += 1
     record(
         db,

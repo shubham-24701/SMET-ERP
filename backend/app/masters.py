@@ -14,7 +14,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field, StringConstraints
-from sqlalchemy import exists, func, or_, select, text
+from sqlalchemy import any_, exists, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -22,6 +22,8 @@ from app.admin import field_error, stale
 from app.audit import diff, record
 from app.auth import DB, require
 from app.models import (
+    AssemblyOrder,
+    Bom,
     BomLine,
     Company,
     Item,
@@ -29,9 +31,13 @@ from app.models import (
     NumberSequence,
     Party,
     PurchaseOrderLine,
+    PurchaseRequestLine,
+    Reservation,
+    Serial,
     StockBalance,
     StockMove,
     SupplierItem,
+    SupplierQuoteLine,
     Unit,
     Warehouse,
 )
@@ -360,7 +366,13 @@ def item_in_use(db: Session, item_id) -> bool:
     return bool(db.scalar(select(
         exists().where(StockMove.item_id == item_id)
         | exists().where(PurchaseOrderLine.item_id == item_id)
+        | exists().where(PurchaseRequestLine.item_id == item_id)
+        | exists().where(SupplierQuoteLine.item_id == item_id)
         | exists().where(BomLine.component_id == item_id)
+        | exists().where(Bom.item_id == item_id)
+        | exists().where(AssemblyOrder.item_id == item_id)
+        | exists().where(Serial.item_id == item_id)
+        | exists().where(Reservation.item_id == item_id)
     )))  # fmt: skip
 
 
@@ -383,6 +395,17 @@ def list_items(
     if active is not None:
         query = query.where(Item.active == active)
     return page(db, query.order_by(Item.code), limit, offset, item_row)
+
+
+@router.get("/items/options")
+def item_options(_: require("items.view"), db: DB, kind: ItemKind | None = None) -> dict:
+    """Every active item, a few fields each, for pickers (a few thousand rows stay small)."""
+    query = select(
+        Item.id, Item.code, Item.name, Item.unit_code, Item.tracking, Item.kind, Item.assembled
+    ).where(Item.active)
+    if kind:
+        query = query.where(Item.kind == kind)
+    return {"items": [dict(r._mapping) for r in db.execute(query.order_by(Item.code))]}
 
 
 @router.get("/items/{item_id}")
@@ -487,7 +510,7 @@ def list_parties(
     if q:
         query = query.where(or_(Party.code.ilike(f"%{q}%"), Party.name.ilike(f"%{q}%")))
     if kind:
-        query = query.where(Party.kinds.any(kind))
+        query = query.where(any_(Party.kinds) == kind)
     if active is not None:
         query = query.where(Party.active == active)
     return page(db, query.order_by(Party.name, Party.id), limit, offset, party_row)

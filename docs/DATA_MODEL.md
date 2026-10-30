@@ -3,7 +3,8 @@
 Conventions: UUID primary keys; `timestamptz` in UTC; `version` on editable records (optimistic
 locking); history is never rewritten: corrections are new rows (stock movements, audit events).
 Migrations in `backend/migrations/versions/` are the authoritative schema (0001 foundation; 0002
-hardens the audit trigger and protects `alembic_version`; 0003 Phases 2–3).
+hardens the audit trigger and protects `alembic_version`; 0003 Phases 2–3; 0004 review fixes:
+longer movement document numbers, order editors, count counters, returns not replaced).
 
 ## Phase 1 tables
 
@@ -33,7 +34,7 @@ hardens the audit trigger and protects `alembic_version`; 0003 Phases 2–3).
 | `company.rules` | Business rules (auto-approval limit, self-approval switches) | Defaults are the cautious choice |
 | `purchase_requests` (+ `_lines`) | Needs, why, for what, by when | open / ordered / cancelled |
 | `supplier_quotes` (+ `_lines`) | Offers per request: price, quantity, delivery, currency | open / selected / declined |
-| `purchase_orders` (+ `_lines`) | Orders, approval trail, expected dates | Line CHECK: received = awaiting + accepted + rejected + held; returned ≤ rejected |
+| `purchase_orders` (+ `_lines`) | Orders, approval trail (`editors`: everyone who drafted or changed it), expected dates; per line `qty_not_replaced` for returns the supplier won't replace | Line CHECK: received = awaiting + accepted + rejected + held; returned ≤ rejected |
 | `goods_receipts` (+ `_lines`) | Deliveries against an order | Never more than outstanding |
 | `supplier_returns` (+ `_lines`) | Rejected goods sent back | From the rejected area only |
 | `serials` | One row per tracked unit: serial, supplier serial, lot, status, location, receipt or assembly order | `serial` unique; (item, supplier serial) unique |
@@ -41,7 +42,7 @@ hardens the audit trigger and protects `alembic_version`; 0003 Phases 2–3).
 | `stock_balances` | Quantity per (item, location, lot) | Kept in the same transaction as the move; CHECK qty ≥ 0 |
 | `reservations` | Stock promised to an assembly order, sales order or project | qty_used ≤ qty; active / used / released |
 | `stock_adjustments` (+ `_lines`) | Corrections: signed change, or a count's counted figure, or serials in / out / found | pending → approved / rejected by someone else |
-| `stock_counts` (+ `_lines`) | A location's books when the count started and what was found | open → submitted / cancelled |
+| `stock_counts` (+ `_lines`) | A location's books when the count started, what was found, and who counted (`counters`, who can't approve the result) | open → submitted / cancelled; never on the assembly floor |
 
 ## Phase 3 tables
 

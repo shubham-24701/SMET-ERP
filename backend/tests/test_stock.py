@@ -80,6 +80,7 @@ def test_reservations_hold_stock_and_the_last_units_go_to_one_person(setup, user
         a.post(
             f"{API}/adjustments",
             json={
+                "key": key(),
                 "reason": "Damaged in storage",
                 "lines": [
                     {
@@ -111,6 +112,7 @@ def test_corrections_need_a_second_person_and_a_reason(setup):
     no_reason = a.post(
         f"{API}/adjustments",
         json={
+            "key": key(),
             "reason": "",
             "lines": [{"item_id": x["id"], "location_id": store, "qty_change": -2}],
         },
@@ -120,6 +122,7 @@ def test_corrections_need_a_second_person_and_a_reason(setup):
         a.post(
             f"{API}/adjustments",
             json={
+                "key": key(),
                 "reason": "Two rolls damaged",
                 "lines": [{"item_id": x["id"], "location_id": store, "qty_change": -2}],
             },
@@ -177,6 +180,7 @@ def test_a_count_corrects_against_the_stock_at_approval(setup):
         a.post(
             f"{API}/adjustments",
             json={
+                "key": key(),
                 "reason": "Scrapped",
                 "lines": [
                     {

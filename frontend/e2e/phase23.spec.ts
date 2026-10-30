@@ -95,7 +95,7 @@ test('buy, receive, inspect, assemble and pass a battery', async ({ page }) => {
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(/^PO-/)
   const poUrl = page.url()
   await page.getByRole('button', { name: 'Submit for approval' }).click()
-  await expect(page.getByText('You raised or submitted this order, so someone else approves it.')).toBeVisible()
+  await expect(page.getByText('You raised, changed or submitted this order, so someone else approves it.')).toBeVisible()
   await shot(page, '11-po-waiting')
 
   // Chen approves, records the delivery, and decides: 8 accepted, 2 rejected.

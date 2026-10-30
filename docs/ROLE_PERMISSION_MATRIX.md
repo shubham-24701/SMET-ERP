@@ -31,7 +31,7 @@ Source of truth: `backend/app/rbac.py` (`PERMISSIONS`, `TEMPLATES`). Roles are c
 | Only known permissions can be granted | `admin._checked_perms` |
 | Every role and user change is audited with the permissions added and removed and the reason given | `audit_events` |
 | The System Administrator template holds no business permission (no approvals, stock or warranty changes) | `test_admin_holds_no_business_permissions` |
-| Nobody approves a purchase order they raised or submitted, nor a stock correction they asked for (switches in Rules & numbering, off by default) | `procurement._decide`, `inventory._decidable` |
+| Nobody approves a purchase order they drafted, changed or submitted, nor a stock correction they asked for or counted (switches in Rules & numbering, off by default) | `procurement._decide`, `inventory._decidable` |
 | Accepting, rejecting or holding received goods needs `quality.create`, so a storekeeper records a delivery and quality decides | `procurement.receive` |
 | The System Administrator holds every `.configure` permission (so it can grant them) and the views it configures, but no permission that approves, moves or inspects anything | `rbac.ADMIN_PERMS`, `test_admin_holds_no_business_permissions` |
 | Self-approval of quotations and warranty corrections is refused by default | Phases 4 and 6 |

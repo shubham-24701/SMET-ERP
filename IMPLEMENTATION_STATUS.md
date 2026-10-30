@@ -51,6 +51,7 @@ Nothing here has been sandbox-tested against an external provider or production-
 | Bills of materials | Versions per assembled model; one active at a time; an active version never changes (a change is a new draft) | `test_assembly.py::test_an_active_bom_never_changes` |
 | Assembly orders | Plan with responsible person and target date; release reserves every component or lists the shortage, which becomes a purchase request in one click; issue to the assembly floor (reservation used first); record each battery with its serial (SMET numbering or captured), actual consumption and links to every component serial or lot; return unused material; complete or cancel with checks | `::test_release_reserves_components_or_lists_what_is_short`, `::test_from_components_to_a_passed_battery`, `::test_only_issued_material_can_be_consumed` |
 | Quality gate | Test parameters and checklists per model; limits apply only once SMET confirms them; a battery passes only with every required check done, every required reading taken and readings within confirmed limits; hold → quarantine, rework → back to the floor and inspected again; only a pass puts a built battery into available stock; inspections keep the limits that applied | `::test_from_components_to_a_passed_battery`, `::test_unconfirmed_limits_are_recorded_not_applied` |
+| Independent review | A separate reviewer proved 11 defects, including two ways a battery could reach available stock without inspection (bought from a supplier; found in a count). All fixed, each with a regression test; migration 0004 | `test_review_p23.py` |
 | Traceability | Serial record with purchase order, components, what it was built into, inspections and every movement | `GET /serials/{id}`, Playwright journey |
 | Screens | Purchase requests and comparison, purchase orders with quantity columns, delivery and decision dialogs, stock (with below-minimum filter and one-click purchase request), movements with CSV, serial numbers and records, reservations, counts and corrections, assembly orders, final inspection, bills of materials, items with inspection set-up, suppliers & customers, warehouses, rules & numbering, "Waiting for you" on the overview | Playwright `phase23.spec.ts` (two people: one raises, the other approves; phone width checked) |
 
@@ -77,18 +78,17 @@ Nothing here has been sandbox-tested against an external provider or production-
 
 See [docs/TEST_RESULTS.md](docs/TEST_RESULTS.md) for the commands and outputs.
 
-- Backend: 72 pytest tests passed (53 from Phase 1, 19 new); ruff lint and format clean.
+- Backend: 82 pytest tests passed (53 Phase 1, 19 Phases 2–3, 10 review regressions); ruff clean; deprecation warnings treated as errors.
 - Frontend: oxlint and TypeScript clean, 7 Vitest tests, production build OK.
 - Browser: 3 Playwright journeys passed locally (Chromium), including the Phase 2–3 journey.
 - CI (GitHub Actions, public repository since 2026-10-30): every job green on the Phase 1 branch and on
   this branch: Ubuntu and Windows backends, frontend, Edge on Windows, secret scan, dependency audit.
-- Independent review of Phases 2–3: see the section below.
+- Independent review of Phases 2–3: 2 high, 6 medium and 9 low findings; every one fixed or recorded with its reason (TEST_RESULTS.md).
 
 ## Known limitations (Phases 2–3)
 
 - Supporting documents and photos (quotations, delivery notes, test attachments) need file storage: Phase 7.
 - No import of existing items, suppliers or opening stock yet: waiting for SMET's sample files (question 27).
-- Item pickers list the first 200 active items (noted in code); a search-as-you-type picker replaces them past that.
 - Rework keeps the battery's components; swapping a component during rework is not built.
 - Purchase prices are reference only; there is no stock valuation until SMET answers question 7.
 - Sales orders and projects arrive in Phase 4; until then a reservation names what it is for in words.

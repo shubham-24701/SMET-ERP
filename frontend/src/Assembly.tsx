@@ -106,18 +106,22 @@ export function AssemblyOrdersPage() {
 function Materials({ order, mode, onDone }: { order: Order; mode: 'issue' | 'return'; onDone: () => void }) {
   const { warehouses } = useWarehouses()
   const [key] = useState(newKey)
-  const mats = order.materials!.filter((m) => (mode === 'issue' ? true : m.on_floor > 0))
+  // Returning: one row per lot on the floor, so each lot goes back with its own quantity.
+  const mats = mode === 'issue' ? order.materials!.map((m) => ({ m, lot: '', floor: 0 }))
+    : order.materials!.filter((m) => m.on_floor > 0).flatMap((m) => (m.item.tracking === 'lot'
+      ? m.on_floor_lots.map((l) => ({ m, lot: l.lot, floor: l.qty }))
+      : [{ m, lot: '', floor: m.on_floor }]))
   const floorSerials = (id: string) => order.serials_on_floor!.filter((s) => s.item_id === id).map((s) => s.serial)
-  const [rows, setRows] = useState(mats.map((m) => ({
-    qty: String(mode === 'issue' ? Math.max(m.needed - m.issued + m.returned, 0) : m.on_floor),
-    lot: mode === 'return' ? m.on_floor_lots[0]?.lot ?? '' : '', serials: mode === 'return' ? floorSerials(m.item.id).join('\n') : '', location_id: '',
+  const [rows, setRows] = useState(mats.map(({ m, lot, floor }) => ({
+    qty: String(mode === 'issue' ? Math.max(m.needed - m.issued + m.returned, 0) : floor),
+    lot, serials: mode === 'return' ? floorSerials(m.item.id).join('\n') : '', location_id: '',
   })))
   const action = useAction(onDone)
   const set = (i: number, k: string, v: string) => setRows(rows.map((r, j) => (j === i ? { ...r, [k]: v } : r)))
   return (
     <form noValidate onSubmit={(e) => {
       e.preventDefault()
-      const lines = mats.map((m, i) => ({ item_id: m.item.id, qty: num(rows[i].qty), lot: rows[i].lot, serials: serialList(rows[i].serials), location_id: rows[i].location_id || null })).filter((l) => l.qty)
+      const lines = mats.map(({ m }, i) => ({ item_id: m.item.id, qty: num(rows[i].qty), lot: rows[i].lot, serials: serialList(rows[i].serials), location_id: rows[i].location_id || null })).filter((l) => l.qty)
       void action.run('go', () => api(`/assembly-orders/${order.id}/${mode}`, { method: 'POST', body: { key, lines } }))
     }}>
       <p className="hint">{mode === 'issue' ? `From available stock to ${order.assembly_location}. Reserved quantities are used first.` : `From ${order.assembly_location} back to available stock.`}</p>
@@ -125,10 +129,10 @@ function Materials({ order, mode, onDone }: { order: Order; mode: 'issue' | 'ret
         <table className="table">
           <thead><tr><th scope="col">Component</th><th scope="col" className="num">{mode === 'issue' ? 'Needed / issued' : 'On the floor'}</th><th scope="col">Quantity</th><th scope="col">{mode === 'issue' ? 'From' : 'To'}</th><th scope="col">Lot / serial numbers</th></tr></thead>
           <tbody>
-            {mats.map((m, i) => (
-              <tr key={m.item.id}>
+            {mats.map(({ m, lot, floor }, i) => (
+              <tr key={`${m.item.id}${lot}`}>
                 <td><code>{m.item.code}</code><span className="small">{m.item.name}</span></td>
-                <td className="num">{mode === 'issue' ? `${qty(m.needed)} / ${qty(m.issued - m.returned)}` : qty(m.on_floor, m.item.unit_code)}</td>
+                <td className="num">{mode === 'issue' ? `${qty(m.needed)} / ${qty(m.issued - m.returned)}` : qty(floor, m.item.unit_code)}</td>
                 <td><input aria-label={`${m.item.code} quantity`} type="number" min={0} step="any" value={rows[i].qty} onChange={(e) => set(i, 'qty', e.target.value)} /></td>
                 <td><select aria-label={`${m.item.code} location`} value={rows[i].location_id} onChange={(e) => set(i, 'location_id', e.target.value)}><option value="">Main store</option><LocationOptions warehouses={warehouses.filter((w) => w.id === order.warehouse.id)} purpose="available" /></select></td>
                 <td>

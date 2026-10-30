@@ -52,9 +52,11 @@ export function Status({ s }: { s: string }) {
   return <Tag tone={TONE[s] ?? 'neutral'}>{words(s)}</Tag>
 }
 
-// shortcut: pickers load up to 200 active items; switch to a search-as-you-type picker past that.
+export type Option = Ref & { kind: string; assembled: boolean }
+
+/** Every active item, for pickers (the native select lets people type the code to jump to it). */
 export function useItems(kind?: string) {
-  const { data } = useApi<Page<Item>>(`/items?limit=200${kind ? `&kind=${kind}` : ''}`)
+  const { data } = useApi<{ items: Option[] }>(`/items/options${kind ? `?kind=${kind}` : ''}`)
   return data?.items ?? []
 }
 

@@ -18,7 +18,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.encoders import jsonable_encoder
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import AfterValidator, BaseModel, Field, StringConstraints
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
@@ -346,9 +346,20 @@ class MaterialLine(BaseModel):
     serials: Serials = []
 
 
+def once_each(rows: list) -> list:
+    """Each item (and lot) once per request: quantities are checked per line against what the order
+    holds, so a repeated line could take another order's material."""
+    seen = [(r.item_id, r.lot) for r in rows]
+    if len(set(seen)) != len(seen):
+        raise ValueError("Each item and lot only once: put the total on one line")
+    return rows
+
+
 class MaterialsIn(BaseModel):
     key: Key
-    lines: Annotated[list[MaterialLine], Field(min_length=1, max_length=200)]
+    lines: Annotated[
+        list[MaterialLine], Field(min_length=1, max_length=200), AfterValidator(once_each)
+    ]
 
 
 class Part(BaseModel):
@@ -361,7 +372,7 @@ class Part(BaseModel):
 class UnitIn(BaseModel):
     key: Key
     serial: SerialNo | None = None  # none: the next SMET number
-    parts: Annotated[list[Part], Field(min_length=1, max_length=200)]
+    parts: Annotated[list[Part], Field(min_length=1, max_length=200), AfterValidator(once_each)]
     notes: Annotated[str, StringConstraints(strip_whitespace=True, max_length=300)] = ""
 
 
@@ -755,6 +766,8 @@ def build_unit(order_id: uuid.UUID, body: UnitIn, p: require("assembly.edit"), d
     comps = lock_items(db, list(sent))
     floor, doc, have = _assembly_loc(db, ao), ("assembly_order", ao.id, ao.number), wip(db, ao)
     number = body.serial or next_number(db, "serial")
+    while not body.serial and db.scalar(select(Serial.id).where(Serial.serial == number)):
+        number = next_number(db, "serial")  # a typed-in or received serial already took this one
     unit = new_serial(db, battery, number, "under_assembly", assembly_order_id=ao.id)
     for pt in body.parts:
         item = comps[pt.item_id]

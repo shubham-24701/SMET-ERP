@@ -361,6 +361,8 @@ class PurchaseOrder(Base):
     terms: Mapped[str] = mapped_column(Text, server_default="")
     notes: Mapped[str] = mapped_column(Text, server_default="")
     created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    # everyone who drafted or changed it: none of them may approve it
+    editors: Mapped[list[uuid.UUID]] = mapped_column(ARRAY(Uuid), server_default="{}")
     submitted_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     decided_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
@@ -399,6 +401,7 @@ class PurchaseOrderLine(Base):
     qty_rejected: Mapped[float] = mapped_column(QTY, server_default="0")
     qty_held: Mapped[float] = mapped_column(QTY, server_default="0")
     qty_returned: Mapped[float] = mapped_column(QTY, server_default="0")
+    qty_not_replaced: Mapped[float] = mapped_column(QTY, server_default="0")  # returned, not owed
 
 
 class GoodsReceipt(Base):
@@ -513,7 +516,7 @@ class StockMove(Base):
     kind: Mapped[str] = mapped_column(String(20))
     doc_type: Mapped[str] = mapped_column(String(20), server_default="")
     doc_id: Mapped[str] = mapped_column(String(64), server_default="")
-    doc_number: Mapped[str] = mapped_column(String(30), server_default="")
+    doc_number: Mapped[str] = mapped_column(String(60), server_default="")
     user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     reason: Mapped[str] = mapped_column(String(300), server_default="")
 
@@ -590,6 +593,8 @@ class StockCount(Base):
     )  # open|submitted|cancelled
     notes: Mapped[str] = mapped_column(Text, server_default="")
     adjustment_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("stock_adjustments.id"))
+    # everyone who entered counts: none of them may approve the resulting correction
+    counters: Mapped[list[uuid.UUID]] = mapped_column(ARRAY(Uuid), server_default="{}")
     created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = _ts()
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
