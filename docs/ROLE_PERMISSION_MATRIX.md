@@ -34,7 +34,8 @@ Source of truth: `backend/app/rbac.py` (`PERMISSIONS`, `TEMPLATES`). Roles are c
 | Nobody approves a purchase order they drafted, changed or submitted, nor a stock correction they asked for or counted (switches in Rules & numbering, off by default) | `procurement._decide`, `inventory._decidable` |
 | Accepting, rejecting or holding received goods needs `quality.create`, so a storekeeper records a delivery and quality decides | `procurement.receive` |
 | The System Administrator holds every `.configure` permission (so it can grant them) and the views it configures, but no permission that approves, moves or inspects anything | `rbac.ADMIN_PERMS`, `test_admin_holds_no_business_permissions` |
-| Self-approval of quotations and warranty corrections is refused by default | Phases 4 and 6 |
+| Nobody approves a quotation revision they edited or submitted, a requirement sheet they prepared or changed, or a project change they asked for | `sales._decide`, `projects.decide_sheet`, `projects.decide_change` |
+| Self-approval of warranty corrections is refused by default | Phase 6 |
 
 Residual risk, accepted for now: an administrator may give business roles (that is their job), so they
 could give an approval role to a second account they control. Mitigation: it is audited, and Management can review role
@@ -51,9 +52,9 @@ changes in the audit log; a two-person rule for permission changes can be added 
 | Warehouse / Inventory Officer | Staff | Receipts, transfers, reservations, counts, permitted adjustments | items.view, parties.view, warehouses.view, purchasing.view, receipts.create, stock.view/create/export, adjustments.create, assembly.view/edit (issue materials) | 2 |
 | Assembly Technician | Staff | Assigned assembly orders, consumption, checklists | items.view, warehouses.view, bom.view, assembly.view/edit, stock.view | 3 |
 | Quality Inspector | Staff | Inspections, pass / hold / rework, approved test parameters | items.view, warehouses.view, purchasing.view, bom.view, assembly.view, stock.view, quality.create/configure | 3 |
-| Sales Officer | Staff | Enquiries, quotations, customers, sales orders | — | 4 |
-| Sales Approver | Staff | Commercial approvals, discounts, quotation approval | — | 4 |
-| Project Manager | Staff | Projects, site requirements, milestones, documents, installation coordination | — | 4–5 |
+| Sales Officer | Staff | Enquiries, quotations, customers, sales orders | items.view, parties.view/edit, stock.view, sales.view/create, projects.view, dispatch.view (Phase 4) | 4 |
+| Sales Approver | Staff | Commercial approvals, discounts, quotation approval | items.view, parties.view, stock.view, sales.view/approve, projects.view | 4 |
+| Project Manager | Staff | Projects, site requirements, milestones, documents, installation coordination | items.view, parties.view, stock.view, warehouses.view, sales.view, projects.view/create, dispatch.view | 4–5 |
 | Installation Technician | Staff | Assigned visits, installation records, commissioning, handover evidence | — | 5 |
 | Warranty Administrator | Staff | Registration review, activation, permitted corrections | — | 6 |
 | Service Coordinator | Staff | Service intake, coverage checks, assignments, scheduling | — | 6 |
@@ -97,3 +98,15 @@ password (`/auth/me`, `/auth/password`).
 | `bom.view` / `bom.configure` | See bills of materials; draft versions and make them active |
 | `assembly.view` / `assembly.create` / `assembly.edit` | See orders; plan, release, complete, cancel; issue, build and return materials |
 | `quality.create` / `quality.configure` | Decide on received goods and inspect finished batteries; set test parameters, limits and checklists |
+
+## Phase 4 permission catalogue
+
+| Permission | Allows |
+| --- | --- |
+| `sales.view` / `sales.create` / `sales.approve` | See enquiries, quotations, orders; record, prepare, submit, answer, convert, reserve; approve or reject quotations (not your own) |
+| `projects.view` / `projects.create` / `projects.approve` / `projects.configure` | See projects; create and run them (sites, sheets, milestones, tasks, notes, changes); engineering approval of sheets and approval of changes; set sizing rules |
+| `dispatch.view` / `dispatch.create` | See dispatches and delivery notes; plan, send, record delivery, cancel |
+
+Templates gaining Phase 4 permissions: Sales Officer, Sales Approver, Project Manager (above); Warehouse
+Officer gets sales.view and dispatch.view/create; Operations Manager gets projects.approve; System
+Administrator gets projects.configure and projects.view.

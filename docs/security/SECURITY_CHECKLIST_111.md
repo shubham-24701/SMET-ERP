@@ -46,9 +46,10 @@ prompt (§28), which are supplementary and not part of the original list.
 | Account recovery | Admin-issued one-time password, must be changed at first sign-in; email reset when email exists (P7) | `test_new_user_must_change…` |
 | MFA | Not built; extension point is the session layer. Decision in P8 | — |
 | Object-level authorization / IDOR | Staff records are company-wide by design (one company); every route checks its permission (route matrix). Party scoping arrives with the portals (P6) | `test_security_matrix.py` |
-| Approval separation | Purchase orders and stock corrections can't be approved by the person who raised them (configurable, off) | `test_the_whole_purchase_journey…`, `test_corrections_need_a_second_person…` |
+| Approval separation | Purchase orders, stock corrections, quotations, requirement sheets and project changes can't be approved by anyone who prepared, changed or submitted them (configurable for orders, corrections and quotations; off) | `test_the_whole_purchase_journey…`, `test_corrections_need_a_second_person…` |
 | Audit integrity | Audit log and stock ledger append-only at database level, for the app and the owner | `test_platform.py`, `test_the_ledger_cannot_be_rewritten_by_the_app` |
 | File uploads | Not built (P7): type sniffing, size limits, storage outside the web root, permission-checked downloads | — |
+| Formula injection | Sizing rules run through an AST whitelist (numbers, inputs, arithmetic, five functions); everything else is refused before it is stored or run | `test_formulas_are_arithmetic_only` |
 | Public endpoint data minimisation | Health only in P1; verification portal returns approved fields only (P6) | — |
 | Dependency review | pip-audit and npm audit clean; run in CI | TEST_RESULTS.md |
 | Error handling | 500s carry a reference, never internals | `test_crashes_answer_calmly_without_internals` |

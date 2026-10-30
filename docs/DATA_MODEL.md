@@ -4,7 +4,7 @@ Conventions: UUID primary keys; `timestamptz` in UTC; `version` on editable reco
 locking); history is never rewritten: corrections are new rows (stock movements, audit events).
 Migrations in `backend/migrations/versions/` are the authoritative schema (0001 foundation; 0002
 hardens the audit trigger and protects `alembic_version`; 0003 Phases 2–3; 0004 review fixes:
-longer movement document numbers, order editors, count counters, returns not replaced).
+longer movement document numbers, order editors, count counters, returns not replaced; 0005 Phase 4).
 
 ## Phase 1 tables
 
@@ -54,6 +54,22 @@ longer movement document numbers, order editors, count counters, returns not rep
 | `test_parameters` | Readings per model, unit, lowest / highest, required, `confirmed` | Limits apply only when confirmed; rows are switched off, never deleted |
 | `checklist_items` | Inspection checks per model | Same |
 | `inspections` | Result (passed / on hold / rework), readings and checklist as recorded, with the limits that applied | Copies limits, so later changes never rewrite history |
+
+## Phase 4 tables
+
+| Table | Holds | Key rules |
+| --- | --- | --- |
+| `enquiries` | Customer, products or project, requested lines (item or text), needed-by | open / quoted / lost / closed |
+| `quotations` | Number, customer, enquiry, project | Content lives in revisions |
+| `quotation_revisions` (+ `quotation_lines`) | Revision number, currency, validity, terms, scope, dates, editors, approval, customer answer; lines by type (battery, accessory, installation, commissioning, AMC, other) with price and discount | (quotation, rev) unique; editable only as a draft; "expired" is computed from validity |
+| `sales_orders` (+ `_lines`) | Customer, the accepted revision, project, committed date, address; per line ordered, dispatched, delivered | `quotation_revision_id` unique: one order per accepted revision; dispatched ≤ ordered (CHECK) |
+| `projects` | Customer, scope, contacts, manager, dates, status | planning / active / on hold / completed / cancelled |
+| `sites` | Address, contact, survey (date, by whom, findings, requirements) | Per project |
+| `project_milestones`, `project_tasks`, `project_notes`, `project_changes` | Milestones with due and done dates; tasks with assignee; notes and pending actions; changes with decision | A change is decided by someone else |
+| `sizing_rules` | Named inputs, arithmetic expression, result unit, confirmed | Expression checked against a whitelist before it is stored or run |
+| `requirement_sheets` (+ `requirement_lines`) | Version, site, status, preparer and editors, decision; lines with item, configuration, quantity and the calculation shown | (project, version) unique; approved sheets never change; a new approval supersedes the old |
+| `dispatches` (+ `dispatch_lines`) | Order, site, warehouse, dates, destination, transport, acknowledgement, cancellation; lines with quantity, lot, serials, picking location, reserved quantity used, refused and damaged | planned → dispatched → delivered, or cancelled; refused + damaged ≤ sent (CHECK) |
+| `serials.party_id`, `serials.site_id` | Who holds a dispatched unit, and where | Cleared when it comes back |
 
 ## Planned entities (from the proposal, by phase)
 

@@ -1,8 +1,8 @@
 # Implementation status
 
-**Updated:** 2026-10-30 · **Version:** 0.2.0 · **Current phase:** 2 (master data, purchasing,
-stock) and 3 (assembly and quality) built and verified locally and in CI; open questions next, then
-Phase 4 on the owner's go-ahead.
+**Updated:** 2026-10-30 · **Version:** 0.3.0 · **Current phase:** 4 (sales, projects, dispatch)
+built and verified locally and in CI, on top of Phases 1–3 (pull request #1 to `main`). Phase 5
+(installation and traceability) next on the owner's go-ahead.
 
 Labels used below: **Verified** = automated tests pass locally (and in CI once the run is green);
 **Built, not yet verified** = code exists, the check has not run; **Planned** = not built.
@@ -29,12 +29,28 @@ Nothing here has been sandbox-tested against an external provider or production-
 | 1 | Foundation: sign-in, sessions, CSRF, configurable roles/permissions (17 role templates), users, append-only audit log, company settings, job queue, health, CI, design system | **Verified (local + CI)** |
 | 2 | Master data (models, items, units, parties, warehouses, numbering, business rules), suppliers & procurement (requests, quotations and comparison, POs with approval, receipts & inspection, returns), inventory (ledger, reservations, transfers, counts, corrections, reconciliation, serials) | **Verified (local + CI)** |
 | 3 | Assembly & quality: BOM versions, assembly orders, reserve/issue/consume/return, serial assignment with component links, configurable checklists and test parameters, pass/hold/rework, finished-stock receipt only through a passing inspection | **Verified (local + CI)** |
-| 4 | Sales & projects: enquiries, quotations with revisions and approval, sales orders, projects/sites/surveys, requirement sheets with approval, procurement & assembly links, dispatch and delivery | Planned |
+| 4 | Sales & projects: enquiries, quotations with revisions and approval, sales orders, projects/sites/surveys, requirement sheets with engineering approval and SMET-supplied sizing rules, procurement & assembly links, dispatch and delivery | **Verified (local + CI)** |
 | 5 | Installation & traceability: visits, commissioning, handover, QR labels, battery banks, lifecycle timeline | Planned |
 | 6 | Warranty & after-sales: registration/activation, public verification portal, AMC, service requests, replacements, maintenance alerts and reset codes (manual process until a supplier API is confirmed) | Planned |
 | 7 | Notifications (in-app; email/SMS/WhatsApp adapters off until approved), dashboards, reports, exports, file attachments | Planned |
 | 8 | Hardening: 111-checkpoint evidence, performance and concurrency tests, backup/restore drill, deployment package, incident process | Planned |
 | 9 | End-to-end verification, release readiness, activation checklist | Planned |
+
+## Phase 4: what was built
+
+| Area | What works | Evidence |
+| --- | --- | --- |
+| Enquiries | Customer, products-only or project supply, items or free text, quantities, needed-by date; a quotation draft in one click | `test_sales.py::test_a_quotation_goes_from_enquiry_to_exactly_one_order` |
+| Quotations | Separate lines for batteries, accessories, installation, commissioning, AMC and other; customer pricing and discounts per line; scope notes, terms, installation / commissioning / handover dates. A draft can be edited; from submission a revision never changes; changes are new revisions, earlier ones kept as "revised". Statuses draft, waiting for approval, approved, rejected, accepted, declined, revised, and expired (past validity, computed) | same, `::test_revisions_are_kept_and_conversion_happens_once`, `::test_expired_quotations_cannot_be_accepted` |
+| Approval | Every quotation needs an approver unless SMET sets an automatic limit (total in company currency and maximum discount); nobody who edited or submitted a revision approves it | `::test_small_quotations_without_discount_can_approve_themselves` |
+| Customer answer and conversion | Who accepted, their reference, the date; an accepted revision becomes exactly one sales order (unique in the database; three people converting at once: one order) | `::test_revisions_are_kept_and_conversion_happens_once` |
+| Sales orders | Lines with sent, delivered, still to send, reserved, free and short; reserve free stock; a purchase request for what bought goods are short of; a planned assembly order for an assembled battery that is short; close or cancel (reservations released) | `::test_what_an_order_is_short_of_becomes_a_purchase_request` |
+| Dispatch | Plan (nothing moves) → send (only available stock: nothing on hold, uninspected or under assembly; exact serials; the order's then the project's reservations used first; never more than is left to send, counting other planned dispatches) → delivery acknowledgement (received by, date; refused goods back to the customer-returns area and owed again; damaged recorded) → or cancel (a sent dispatch's goods and reservations come back; the record stays). Printable delivery note | `::test_dispatch_takes_reserved_available_serials_and_delivery_records_refusals`, `::test_cancelling_a_sent_dispatch_puts_stock_and_reservations_back` |
+| Projects | Customer, scope, contacts, manager, dates, status; sites with address, contact and survey (date, by whom, findings, technical requirements); milestones (material ready, delivery, installation, commissioning, handover); tasks with assignees; progress notes and pending actions; scope, quantity and schedule changes decided by someone else | `test_projects.py::test_changes_need_someone_else_and_progress_is_kept` |
+| Sizing rules | No formula is built in. SMET enters rules (named inputs, an arithmetic formula, a unit) and marks them confirmed; the evaluator accepts only numbers, inputs, + − × ÷, brackets and ceil/floor/round/max/min | `::test_formulas_are_arithmetic_only` |
+| Requirement sheets | Per project or site; quantities typed in or worked out by a rule, with inputs and result kept on the line (and marked if the typed quantity differs); engineering review by someone who didn't prepare it; approved sheets never change; a new approval supersedes the old | `::test_a_project_runs_from_survey_to_approved_requirements` |
+| Material list | Approved requirements against stock: reserve, request purchase of what is short, plan assembly, prepare the project quotation; linked documents listed on the project | same |
+| Screens | Enquiries, quotations (revisions, approval, answer, conversion), sales orders, dispatch (to send, plan with serial picker, send, delivery, cancel, delivery note), projects (sites, sheets with rule calculator, material list, milestones, tasks, changes, notes), sizing rules | Playwright `phase4.spec.ts` (two people in two browsers; phone width checked) |
 
 ## Phases 2–3: what was built
 
@@ -84,6 +100,13 @@ See [docs/TEST_RESULTS.md](docs/TEST_RESULTS.md) for the commands and outputs.
 - CI (GitHub Actions, public repository since 2026-10-30): every job green on the Phase 1 branch and on
   this branch: Ubuntu and Windows backends, frontend, Edge on Windows, secret scan, dependency audit.
 - Independent review of Phases 2–3: 2 high, 6 medium and 9 low findings; every one fixed or recorded with its reason (TEST_RESULTS.md).
+
+## Known limitations (Phase 4)
+
+- Sales orders come only from accepted quotations; a direct order (for example a distributor's repeat order) needs a quotation first.
+- Installation, commissioning and AMC lines are sold and listed; their work is recorded in Phases 5–6.
+- Supporting documents and site photos wait for file storage (Phase 7).
+- No sizing rule is shipped: quantities are typed in until SMET supplies its engineering rules (question 15).
 
 ## Known limitations (Phases 2–3)
 
