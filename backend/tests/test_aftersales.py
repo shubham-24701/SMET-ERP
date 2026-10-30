@@ -400,6 +400,14 @@ def test_a_replacement_is_linked_to_the_original_and_takes_its_warranty(site):
     )
     assert (old["status"], old["end_reason"].startswith("Replaced by S1")) == ("ended", True)
     titles = [e["title"] for e in ok(pm.get(f"{API}/serials/{sid(site, 'S1')}/timeline"))["events"]]
+    b2 = [e["title"] for e in ok(pm.get(f"{API}/serials/{sid(site, 'B2')}/timeline"))["events"]]
+    assert {
+        "Warranty approved",
+        "Service request opened",
+        "Replaced in the bank",
+        "Service request closed: replaced",
+        "Warranty ended",
+    } <= set(b2)
     assert (
         "Replaced B2" in titles
         and ok(new_client().get(f"{API}/public/lookup?serial=B2"))["warranty"]["state"] == "ended"
@@ -425,3 +433,17 @@ def test_refused_attempts_leak_nothing(site, user_with):
     anyone = new_client()
     for path in (f"/service-requests/{sr['id']}", "/warranty-registrations", "/maintenance-alerts"):
         assert anyone.get(f"{API}{path}").status_code == 401
+
+
+def test_the_administrator_can_give_out_code_access_without_holding_it(admin):
+    """Reset-code access is business access, granted like an approval permission; the administrator
+    holds none of it, so they can't see a code themselves."""
+    me = ok(admin.get(f"{API}/auth/me"))
+    assert "codes.reveal" not in me["permissions"]
+    ok(
+        admin.post(
+            f"{API}/roles",
+            json={"name": "Code desk", "permissions": ["codes.view", "codes.reveal"]},
+        ),
+        201,
+    )

@@ -75,7 +75,7 @@ PERMISSIONS: dict[str, tuple[str, str]] = {
     "service.create": ("Service", "Open and run service requests: assign, schedule, workshop, parts, replacement, close"),
     "codes.view": ("Maintenance codes", "See maintenance alerts (never the codes)"),
     "codes.create": ("Maintenance codes", "Register and verify maintenance alerts, close them"),
-    "codes.sensitive": ("Maintenance codes", "Record and view maintenance reset codes (each view is audited)"),
+    "codes.reveal": ("Maintenance codes", "Record and view maintenance reset codes (each view is audited)"),
 }  # fmt: skip
 
 CONFIGURE_PERMS = [p for p in PERMISSIONS if p.endswith(".configure")]
@@ -140,7 +140,7 @@ TEMPLATES: dict[str, tuple[str, str, str, list[str]]] = {
     "service_technician": ("Service Technician", "internal",
         "Assigned service jobs, diagnostics, work performed and parts used.", ["items.view", "stock.view", "projects.view", "installation.view", "installation.record", "warranty.view", "amc.view", "service.view", "codes.view"]),
     "code_authorizer": ("Maintenance Code Authorizer", "internal",
-        "Explicitly authorised maintenance reset-code workflows.", ["stock.view", "warranty.view", "service.view", "codes.view", "codes.create", "codes.sensitive"]),
+        "Explicitly authorised maintenance reset-code workflows.", ["stock.view", "warranty.view", "service.view", "codes.view", "codes.create", "codes.reveal"]),
     "distributor_user": ("Distributor User", "distributor",
         "Portal: only this distributor's records and registration workflows.", []),
     "customer_user": ("Customer User", "customer",

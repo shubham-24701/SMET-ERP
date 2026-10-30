@@ -3,7 +3,7 @@
 No supplier mechanism is confirmed (question 22), so nothing here generates, expires or clears a code
 by itself. An alert is registered against a battery and its service request; the battery, customer
 and installed location are verified; the required inspection is a completed visit on that request;
-only then may someone holding `codes.sensitive` type in the code the supplier issued. The code is
+only then may someone holding `codes.reveal` type in the code the supplier issued. The code is
 encrypted (Fernet, key in CODES_KEY), never logged or returned in lists, shown again only to that
 permission with a reason (audited), and erased `code_retention_days` after the alert closes.
 """
@@ -230,7 +230,7 @@ class CodeIn(BaseModel):
 
 
 @router.post("/maintenance-alerts/{alert_id}/code")
-def record_code(alert_id: uuid.UUID, body: CodeIn, p: require("codes.sensitive"), db: DB) -> dict:
+def record_code(alert_id: uuid.UUID, body: CodeIn, p: require("codes.reveal"), db: DB) -> dict:
     """Records the code the supplier issued, once. Needs the verification and a completed inspection
     visit on the service request."""
     a = _alert(db, alert_id, body.version, "verified")
@@ -265,7 +265,7 @@ class RevealIn(BaseModel):
 
 
 @router.post("/maintenance-alerts/{alert_id}/reveal")
-def reveal_code(alert_id: uuid.UUID, body: RevealIn, p: require("codes.sensitive"), db: DB) -> dict:
+def reveal_code(alert_id: uuid.UUID, body: RevealIn, p: require("codes.reveal"), db: DB) -> dict:
     """Shows the code once more, to this permission only; each look is audited with its reason."""
     a = get_or_404(db, MaintenanceAlert, alert_id, "Alert")
     if a.code_ciphertext is None:

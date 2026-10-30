@@ -30,16 +30,21 @@ from app.models import (
     Inspection,
     Item,
     Location,
+    MaintenanceAlert,
     Party,
     Serial,
     SerialComponent,
+    ServiceRequest,
     Site,
     SiteVisit,
     StockMove,
     User,
+    WarrantyRegistration,
 )
 from app.projects import _names
 from app.sales import party_ref
+from app.service import amc_of
+from app.warranty import warranty_of
 
 router = APIRouter(tags=["traceability"])
 TOKEN = re.compile(r"(?:/v/)?([0-9a-f]{32})/?$")
@@ -152,8 +157,98 @@ def timeline(serial_id: uuid.UUID, _: require("stock.view"), db: DB) -> dict:
             ):
                 events.append({"at": v.completed_at, "kind": "stage", "title": STAGE_WORDS[v.stage],
                                "detail": f"On {v.done_on}, {where}", "doc": {"type": "visit", "id": str(v.id), "number": v.number}})  # fmt: skip
+    events += after_sales(db, s)
     events.sort(key=lambda e: _when(e["at"]))
     return {"serial": serial_row(db, s), "now": where_now(db, s), "events": events}
+
+
+def after_sales(db: Session, s: Serial) -> list[dict]:
+    """Warranty decisions, service requests and maintenance alerts (never a code's value)."""
+    out = []
+    for r in db.scalars(select(WarrantyRegistration).where(WarrantyRegistration.serial_id == s.id)):
+        doc = {"type": "warranty", "id": str(r.id), "number": r.number}
+        out.append(
+            {"at": r.created_at, "kind": "warranty", "title": "Warranty registered", "doc": doc}
+        )
+        if r.decided_at and r.status in ("approved", "ended"):
+            out.append(
+                {
+                    "at": r.decided_at,
+                    "kind": "warranty",
+                    "title": "Warranty approved",
+                    "detail": f"{r.start_date} to {r.expiry_date}",
+                    "doc": doc,
+                }
+            )
+        elif r.decided_at and r.status == "rejected":
+            out.append(
+                {
+                    "at": r.decided_at,
+                    "kind": "warranty",
+                    "title": "Warranty registration rejected",
+                    "detail": r.decision_reason,
+                    "doc": doc,
+                }
+            )
+        if r.ended_on:
+            out.append(
+                {
+                    "at": r.ended_on,
+                    "kind": "warranty",
+                    "title": "Warranty ended",
+                    "detail": r.end_reason,
+                    "doc": doc,
+                }
+            )
+    for sr in db.scalars(
+        select(ServiceRequest).where(
+            (ServiceRequest.serial_id == s.id) | (ServiceRequest.replacement_serial_id == s.id)
+        )
+    ):
+        doc = {"type": "service", "id": str(sr.id), "number": sr.number}
+        role = "" if sr.serial_id == s.id else " (as the replacement)"
+        out.append(
+            {
+                "at": sr.created_at,
+                "kind": "service",
+                "title": f"Service request opened{role}",
+                "detail": sr.issue[:160],
+                "doc": doc,
+            }
+        )
+        closed = next((h for h in reversed(sr.history) if h["to"] == "closed"), None)
+        if closed:
+            out.append(
+                {
+                    "at": datetime.fromisoformat(closed["at"]),
+                    "kind": "service",
+                    "title": f"Service request closed: {sr.resolution.replace('_', ' ')}",
+                    "detail": sr.closure_notes[:160],
+                    "doc": doc,
+                }
+            )
+    for a in db.scalars(select(MaintenanceAlert).where(MaintenanceAlert.serial_id == s.id)):
+        doc = {"type": "alert", "id": str(a.id), "number": a.number}
+        out.append(
+            {
+                "at": a.created_at,
+                "kind": "service",
+                "title": "Maintenance alert registered",
+                "detail": a.description[:160],
+                "doc": doc,
+            }
+        )
+        if a.issued_on:
+            out.append(
+                {
+                    "at": a.issued_on,
+                    "kind": "service",
+                    "title": "Reset code recorded",
+                    "detail": f"Given to {a.recipient}",
+                    "doc": doc,
+                }
+            )
+    return out
 
 
 def where_now(db: Session, s: Serial) -> dict:
@@ -174,6 +269,10 @@ def where_now(db: Session, s: Serial) -> dict:
         out["site"] = site_ref(db, db.get(Site, s.site_id))
     if s.location_id:
         out["location"] = label(db, db.get(Location, s.location_id))
+    out["warranty"], out["amc"] = (
+        warranty_of(db, s.id),
+        [{"id": c["id"], "number": c["number"], "ends_on": c["ends_on"]} for c in amc_of(db, s)],
+    )
     return out
 
 

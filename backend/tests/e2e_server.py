@@ -10,6 +10,9 @@ import os
 
 from tests.conftest_env import use_test_database
 
+# Before anything reads the settings (they are cached): a test-only key, not a real one.
+os.environ.setdefault("CODES_KEY", base64.urlsafe_b64encode(b"test-only " * 3 + b"!!").decode())
+
 use_test_database()
 
 import uvicorn  # noqa: E402
@@ -22,7 +25,4 @@ cfg = Config(str(BACKEND_DIR / "alembic.ini"))
 command.downgrade(cfg, "base")  # dropping tables is allowed; rewriting audit rows is not
 command.upgrade(cfg, "head")
 os.environ.setdefault("RUN_WORKER_IN_API", "true")
-os.environ.setdefault(
-    "CODES_KEY", base64.urlsafe_b64encode(b"test-only " * 3 + b"!!").decode()
-)  # not a real key
 uvicorn.run("app.main:app", host="127.0.0.1", port=8000, proxy_headers=False)

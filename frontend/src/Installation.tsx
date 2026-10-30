@@ -4,7 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router'
 import { api, upload } from './api'
 import { useAction, useApi, useCan, useMe, useWhen } from './lib'
 import { Back, Facts, Status, day, num, serialList, today, words, type Page, type Ref } from './ops'
-import { Dialog, Field, FormError, Logo, PageHead, PageState, Pager, SelectField, TextareaField } from './ui'
+import { Dialog, Field, FormError, PageHead, PageState, Pager, SelectField, TextareaField } from './ui'
 
 type Person = { id: string; name: string | null }
 type SiteRef = { id: string; name: string; address: string; project: { id: string; number: string; name: string }; customer: { id: string; name: string } }
@@ -31,7 +31,10 @@ type Visit = VisitBrief & {
 }
 
 const STAGES: [string, string][] = [['installation', 'Installation'], ['commissioning', 'Commissioning'], ['handover', 'Handover'], ['other', 'Other work']]
-const STAGE = Object.fromEntries(STAGES)
+// Maintenance (AMC) and service visits are planned from their contract or request, not scheduled here.
+const ALL_STAGES: [string, string][] = [...STAGES, ['maintenance', 'Maintenance'], ['service', 'Service']]
+const STAGE = Object.fromEntries(ALL_STAGES)
+const MOVES_STAGE = ['installation', 'commissioning', 'handover']
 const people = (ps: Person[]) => ps.map((t) => t.name).join(', ') || 'Not assigned'
 const n = (x: number | string | null) => (x == null ? '…' : String(Number(x)))
 const limits = (min: number | string | null, max: number | string | null, unit: string) =>
@@ -52,7 +55,7 @@ export function VisitsPage() {
       <PageHead title="Site visits" intro="Installation, commissioning and handover visits by date. Schedule them from a project's sites; the technicians on a visit record its work." />
       <div className="toolbar">
         <SelectField label="Status" value={status} onChange={(e) => { setStatus(e.target.value); setOffset(0) }} options={[['scheduled,started', 'To do'], ['completed', 'Completed'], ['cancelled', 'Cancelled'], ['', 'All']]} />
-        <SelectField label="Stage" value={stage} onChange={(e) => { setStage(e.target.value); setOffset(0) }} options={[['', 'Any'], ...STAGES]} />
+        <SelectField label="Stage" value={stage} onChange={(e) => { setStage(e.target.value); setOffset(0) }} options={[['', 'Any'], ...ALL_STAGES]} />
         <label className="check toolbar-check"><input type="checkbox" checked={mine} onChange={(e) => { setMine(e.target.checked); setOffset(0) }} /> <span>Only my visits</span></label>
       </div>
       {error ? <PageState kind="error" title="Couldn't load visits" message={error} />
@@ -280,7 +283,7 @@ function RecordForm({ v, onSaved }: { v: Visit; onSaved: () => void }) {
       <div className="row-end">
         <button className="btn btn-secondary" disabled={!!action.busy}>Save</button>
       </div>
-      {v.stage !== 'other' && (
+      {MOVES_STAGE.includes(v.stage) && (
         <section className="panel panel-wide section">
           <h2>Complete the {v.stage}</h2>
           {v.missing.length > 0
@@ -292,7 +295,7 @@ function RecordForm({ v, onSaved }: { v: Visit; onSaved: () => void }) {
           </div>
         </section>
       )}
-      {v.stage === 'other' && <p><button type="button" className="btn btn-primary" disabled={!!action.busy} onClick={() => action.run('complete', () => saveAndComplete())}>Save and mark done</button></p>}
+      {!MOVES_STAGE.includes(v.stage) && <p><button type="button" className="btn btn-primary" disabled={!!action.busy} onClick={() => action.run('complete', () => saveAndComplete())}>Save and mark done</button></p>}
     </form>
   )
 }
@@ -658,7 +661,7 @@ export function StageChecksPage() {
   return (
     <>
       <PageHead title="Site checks" intro="What a technician must tick off and measure at each stage. A reading is judged against its limits only once SMET marks them confirmed; until then it is recorded, not judged." />
-      {STAGES.slice(0, 3).map(([stage, label]) => {
+      {[...STAGES.slice(0, 3), ...ALL_STAGES.slice(4)].map(([stage, label]) => {
         const rows = data.items.filter((c) => c.stage === stage)
         return (
           <section key={stage} className="panel panel-wide">
@@ -792,31 +795,13 @@ export function LabelsPage() {
   )
 }
 
-/** What anyone who scans a label sees: no sign-in, and nothing about the customer or the site. */
-export function VerifyPage({ token }: { token: string }) {
-  const [state, setState] = useState<{ serial: string; product: string; status: string } | 'missing' | 'error' | null>(null)
-  useEffect(() => {
-    fetch(`/api/v1/public/verify/${encodeURIComponent(token)}`).then(async (r) => setState(r.ok ? await r.json() : r.status === 404 ? 'missing' : 'error')).catch(() => setState('error'))
-  }, [token])
-  const STATUS: Record<string, string> = { in_service: 'Installed and in service', installed: 'Installed, not yet commissioned', removed: 'Taken out of service',
-    not_in_service: 'Not yet installed', withdrawn: 'Withdrawn from use' }
-  return (
-    <main className="verify">
-      <p className="brand"><Logo /> SMET</p>
-      {state === null ? <p>Checking…</p>
-        : state === 'missing' ? <><h1>We can't find this label</h1><p>It may not be a genuine SMET label. Contact SMET with the serial number printed on the battery.</p></>
-        : state === 'error' ? <><h1>We couldn't check this label</h1><p>Please try again in a minute.</p></>
-        : <><h1>Genuine SMET battery</h1><dl className="print-facts"><div><dt>Serial number</dt><dd>{state.serial}</dd></div><div><dt>Product</dt><dd>{state.product}</dd></div><div><dt>Status</dt><dd>{STATUS[state.status] ?? state.status}</dd></div></dl>
-          <p className="muted small">Warranty details will be shown here once SMET's warranty registration is in place.</p></>}
-    </main>
-  )
-}
-
 // ---------- a battery's whole life ----------
 
 type Event = { at: string; kind: string; title: string; detail?: string; by?: string | null; doc?: { type: string; id: string; number: string }; link?: { type: string; id: string } }
-type Timeline = { now: { status: string; customer: { name: string } | null; bank?: { id: string; number: string; name: string }; position?: string; site?: SiteRef; location?: string }; events: Event[] }
-const DOC_PATH: Record<string, string> = { dispatch: '/dispatch/', visit: '/installation/visits/', assembly_order: '/assembly/orders/', purchase_order: '/purchasing/orders/' }
+type Timeline = { now: { status: string; customer: { name: string } | null; bank?: { id: string; number: string; name: string }; position?: string; site?: SiteRef; location?: string
+  warranty: { state: string; registration?: { id: string; number: string }; expiry_date?: string }; amc: { id: string; number: string; ends_on: string }[] }; events: Event[] }
+const DOC_PATH: Record<string, string> = { dispatch: '/dispatch/', visit: '/installation/visits/', assembly_order: '/assembly/orders/', purchase_order: '/purchasing/orders/',
+  warranty: '/warranty/', service: '/service/', alert: '/service/alerts/' }
 
 export function Lifecycle({ id }: { id: string }) {
   const when = useWhen()
@@ -829,7 +814,9 @@ export function Lifecycle({ id }: { id: string }) {
       <Facts rows={[['Status', <Status s={n.status} />], ['Customer', n.customer?.name ?? '—'],
         ['Site', n.site ? <Link to={`/projects/${n.site.project.id}`}>{n.site.name} · {n.site.project.number}</Link> : '—'],
         ['Bank', n.bank ? <Link to={`/installation/banks/${n.bank.id}`}>{n.bank.number} {n.bank.name}, position {n.position}</Link> : '—'],
-        ['In stock at', n.location ?? '—']]} />
+        ['In stock at', n.location ?? '—'],
+        ['Warranty', n.warranty.registration ? <Link to={`/warranty/${n.warranty.registration.id}`}>{words(n.warranty.state)}{n.warranty.expiry_date ? ` to ${day(n.warranty.expiry_date)}` : ''}</Link> : 'None'],
+        ['Maintenance contract', n.amc.length ? n.amc.map((c) => <Link key={c.id} to={`/amc/${c.id}`}>{c.number} to {day(c.ends_on)}</Link>) : 'None']]} />
       <h2 className="section">Lifecycle</h2>
       <ol className="timeline panel panel-wide">{data.events.map((e, i) => (
         <li key={i} data-kind={e.kind}>

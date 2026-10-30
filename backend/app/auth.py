@@ -162,7 +162,14 @@ DB = Annotated[Session, Depends(get_db)]
 def watched(perm: str) -> bool:
     """Refusals worth keeping in the audit log: approvals, corrections, codes, exports, settings,
     users and roles (an attempt there is a signal; an ordinary 403 is just a hidden button)."""
-    return perm.split(".")[1] in ("approve", "correct", "sensitive", "configure", "export") or perm.startswith(("users.", "roles."))
+    return perm.split(".")[1] in (
+        "approve",
+        "correct",
+        "sensitive",
+        "reveal",
+        "configure",
+        "export",
+    ) or perm.startswith(("users.", "roles."))
 
 
 def audit_denial(user: User, missing: list[str]) -> None:

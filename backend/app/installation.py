@@ -1059,10 +1059,15 @@ def list_banks(
     db: DB,
     status_: Annotated[str | None, Query(alias="status")] = None,
     q: Annotated[str | None, Query(max_length=80)] = None,
+    customer_id: uuid.UUID | None = None,
     limit: Limit = 50,
     offset: Offset = 0,
 ) -> dict:
     query = select(BatteryBank).join(Site, Site.id == BatteryBank.site_id)
+    if customer_id:
+        query = query.join(Project, Project.id == Site.project_id).where(
+            Project.customer_id == customer_id
+        )
     if status_:
         query = query.where(BatteryBank.status.in_(status_.split(",")))
     if q:

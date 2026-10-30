@@ -67,7 +67,11 @@ def expiry_for(start: date, months: int) -> date:
     """The last day covered: 12 months from 15 Mar 2026 ends on 14 Mar 2027. When the anniversary
     doesn't exist (29 Feb, 31 Jan + 1 month) the last day of that month is covered."""
     anniversary = add_months(start, months)
-    return anniversary if anniversary.day < start.day else date.fromordinal(anniversary.toordinal() - 1)
+    return (
+        anniversary
+        if anniversary.day < start.day
+        else date.fromordinal(anniversary.toordinal() - 1)
+    )
 
 
 def policy_for(db: Session, item_id, on: date | None) -> WarrantyPolicy | None:

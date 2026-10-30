@@ -1200,7 +1200,9 @@ class StoredFile(Base):
     id: Mapped[uuid.UUID] = _id()
     owner_type: Mapped[str] = mapped_column(String(20))  # visit|warranty|service
     owner_id: Mapped[uuid.UUID] = mapped_column(Uuid)
-    kind: Mapped[str] = mapped_column(String(20))  # photo|test_report|acknowledgement|proof_of_purchase|…
+    kind: Mapped[str] = mapped_column(
+        String(20)
+    )  # photo|test_report|acknowledgement|proof_of_purchase|…
     name: Mapped[str] = mapped_column(String(160))
     content_type: Mapped[str] = mapped_column(String(40))
     size: Mapped[int] = mapped_column(Integer)

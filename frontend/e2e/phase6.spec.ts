@@ -1,0 +1,175 @@
+import { expect, test, type Page } from '@playwright/test'
+import { ADMIN, go, newPassword, seedPeople, shot, signIn, signInAsAdmin, signOut } from './helpers'
+
+// Synthetic data only. Maya sets the warranty policy and the AMC; a stranger asks for service on the
+// public page; Chen runs the request through a service visit and a maintenance reset code.
+async function signedIn(page: Page, who: string, people: Record<string, string>) {
+  const [email, temp] = people[who].split('\n')
+  await page.goto('/')
+  await signIn(page, email, temp)
+  await newPassword(page, temp)
+}
+
+async function api(page: Page, method: 'POST' | 'GET' | 'PUT', path: string, data?: object, multipart?: Record<string, string | { name: string; mimeType: string; buffer: Buffer }>) {
+  const { csrf_token } = await (await page.request.get('/api/v1/auth/csrf')).json()
+  const r = await page.request.fetch(`/api/v1${path}`, { method, data, multipart, headers: { 'X-CSRF-Token': csrf_token } })
+  expect(r.ok(), await r.text()).toBeTruthy()
+  return r.json()
+}
+
+const JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(200, 48)])
+const day = () => new Date().toLocaleDateString('en-CA')
+
+test('warranty by policy at handover, AMC visits, public service request, reset code and closure', async ({ page, browser }) => {
+  test.setTimeout(240_000)
+  const s = String(Date.now()).slice(-5)
+  await signInAsAdmin(page)
+  const people = await seedPeople(page)
+  await signOut(page, ADMIN.name)
+  await signedIn(page, 'Maya Maker', people)
+  const chen = await (await browser.newContext()).newPage()
+  await signedIn(chen, 'Chen Checker', people)
+
+  // Two cells delivered to a site and placed in a bank (the screens are the Phase 4–5 journeys).
+  const wh = await api(page, 'POST', '/warehouses', { code: `W${s}`, name: 'After-sales warehouse' })
+  const store = wh.locations.find((l: { purpose: string }) => l.purpose === 'available')
+  const unit = await api(page, 'POST', '/items', { code: `CELL-${s}`, name: '2 V 800 Ah cell', kind: 'battery_unit', unit_code: 'PCS', tracking: 'serial' })
+  const serials = [`A${s}1`, `A${s}2`]
+  const adj = await api(page, 'POST', '/adjustments', { key: `k${s}a`.padEnd(10, 'x'), reason: 'Opening stock', lines: [{ item_id: unit.id, location_id: store.id, serials_in: serials }] })
+  await api(chen, 'POST', `/adjustments/${adj.id}/approve`, { version: adj.version })
+  const cust = await api(page, 'POST', '/parties', { code: `H${s}`, name: `Harbour Hospital ${s}`, kinds: ['customer'] })
+  const pr = await api(page, 'POST', '/projects', { name: `UPS backup ${s}`, customer_id: cust.id })
+  const site = await api(page, 'POST', `/projects/${pr.id}/sites`, { name: 'Main building', address: 'Jumeirah, Dubai' })
+  let qt = await api(page, 'POST', '/quotations', { customer_id: cust.id, project_id: pr.id, lines: [{ line_type: 'battery', item_id: unit.id, qty: 2, unit_price: 700 }] })
+  qt = await api(page, 'POST', `/quotations/${qt.id}/submit`, { version: qt.revisions[0].version })
+  qt = await api(chen, 'POST', `/quotations/${qt.id}/approve`, { version: qt.revisions[0].version })
+  qt = await api(page, 'POST', `/quotations/${qt.id}/answer`, { version: qt.revisions[0].version, accepted: true, by: 'Buyer', on: day() })
+  const so = await api(page, 'POST', `/quotations/${qt.id}/convert`, { version: qt.revisions[0].version })
+  let dn = await api(page, 'POST', '/dispatches', { order_id: so.id, warehouse_id: wh.id, site_id: site.id, lines: [{ order_line_id: so.lines[0].id, qty: 2, serials }] })
+  dn = await api(page, 'POST', `/dispatches/${dn.id}/send`, { version: dn.version, key: `k${s}snd`.padEnd(10, 'x') })
+  dn = await api(page, 'GET', `/dispatches/${dn.id}`)
+  await api(page, 'POST', `/dispatches/${dn.id}/deliver`, { version: dn.version, key: `k${s}dlv`.padEnd(10, 'x'), received_by: 'Facilities', delivered_on: day() })
+  let bank = await api(page, 'POST', `/sites/${site.id}/banks`, { name: 'UPS bank', configuration: '2 × 2 V' })
+  bank = await api(page, 'POST', `/banks/${bank.id}/batteries`, { version: bank.version, batteries: serials.map((x, i) => ({ serial: x, position: String(i + 1) })) })
+
+  // Maya enters SMET's warranty policy for this model (none is built in).
+  await go(page, 'Warranty policies')
+  await page.getByRole('button', { name: 'Add policy' }).click()
+  let d = page.getByRole('dialog')
+  await d.getByLabel('Battery model').selectOption({ label: `CELL-${s} · 2 V 800 Ah cell` })
+  await d.getByLabel('Months').fill('24')
+  await d.getByLabel(/Approve automatically/).check()
+  await d.getByRole('button', { name: 'Save' }).click()
+  await expect(d).toBeHidden()
+
+  // Installed, commissioned and handed over (Phase 5 screens): the warranty is approved by the policy.
+  type Check = { id: string; kind: string; min_value: number | null; max_value: number | null; active: boolean }
+  for (const stage of ['installation', 'commissioning', 'handover']) {
+    // Whatever checks SMET has set for the stage (earlier journeys add some): ticked, readings in range.
+    const checks: Check[] = (await api(page, 'GET', `/stage-checks?stage=${stage}`)).items.filter((c: Check) => c.active)
+    const checklist = checks.filter((c) => c.kind === 'check').map((c) => ({ check_id: c.id, done: true }))
+    const readings = checks.filter((c) => c.kind === 'reading').map((c) => ({ check_id: c.id, value: c.min_value ?? c.max_value ?? 1 }))
+    let v = await api(page, 'POST', '/visits', { site_id: site.id, stage, bank_ids: [bank.id], scheduled_on: day(), technician_ids: [] })
+    v = await api(page, 'PUT', `/visits/${v.id}/record`, { version: v.version, received_serials: serials, checklist, readings, acknowledgement: { name: 'Facilities manager', on: day() } })
+    if (stage === 'installation') await api(page, 'POST', `/visits/${v.id}/files`, undefined, { file: { name: 'bank.jpg', mimeType: 'image/jpeg', buffer: JPEG }, kind: 'photo' })
+    await api(page, 'POST', `/visits/${v.id}/complete`, { version: v.version, done_on: day() })
+  }
+  await go(page, 'Warranty registrations')
+  await page.getByLabel('Status').selectOption({ label: 'Approved' })
+  await page.getByLabel('Number, serial or customer').fill(serials[0])
+  await expect(page.getByRole('row', { name: new RegExp(serials[0]) })).toContainText('Approved')
+  await page.getByRole('row', { name: new RegExp(serials[0]) }).getByRole('link').click()
+  await expect(page.getByText('Approved by policy').or(page.getByText('Warranty approved').first()).first()).toBeVisible()
+  await shot(page, '40-warranty')
+
+  // An AMC on the bank: quarterly visits planned when it is activated.
+  await go(page, 'Maintenance contracts')
+  await page.getByRole('button', { name: 'New contract' }).click()
+  d = page.getByRole('dialog')
+  await d.getByLabel('Customer').selectOption({ label: `Harbour Hospital ${s}` })
+  await d.getByRole('checkbox', { name: /UPS bank/ }).check()
+  const end = new Date(Date.now() + 364 * 864e5).toLocaleDateString('en-CA')
+  await d.getByLabel('Ends').fill(end)
+  await d.getByLabel('Covered services, one per line').fill('Quarterly inspection\nTorque check')
+  await d.getByRole('button', { name: 'Create draft' }).click()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(/^AMC-/)
+  page.once('dialog', (x) => x.accept())
+  await page.getByRole('button', { name: 'Activate' }).click()
+  await expect(page.getByRole('link', { name: /^VIS-/ })).toHaveCount(3)
+  await shot(page, '41-amc')
+
+  // A stranger checks the battery on the public page and asks for service.
+  const stranger = await (await browser.newContext()).newPage()
+  await stranger.goto('/verify')
+  await stranger.getByLabel('Battery serial number').fill(serials[0])
+  await stranger.getByRole('button', { name: 'Check' }).click()
+  await expect(stranger.getByRole('heading', { name: 'SMET has a record of this battery' })).toBeVisible()
+  await expect(stranger.getByText('Active', { exact: true })).toBeVisible()
+  await expect(stranger.getByText(`Harbour Hospital ${s}`)).toHaveCount(0)
+  await stranger.getByRole('button', { name: 'Ask for service' }).click()
+  await stranger.getByLabel('Your name').fill('Facilities desk')
+  await stranger.getByLabel('Phone').fill('+971 4 555 0101')
+  await stranger.getByLabel('What is wrong').fill(`Maintenance alarm on the UPS ${s}`)
+  await stranger.getByRole('button', { name: 'Send request' }).click()
+  await expect(stranger.getByText(/SMET has received it/)).toBeVisible()
+  await shot(stranger, '42-public')
+
+  // Chen picks it up: warranty and AMC shown separately, a service visit, done.
+  await go(chen, 'Service requests')
+  await chen.getByRole('row', { name: new RegExp(`UPS ${s}`) }).getByRole('link').click()
+  await expect(chen.getByRole('heading', { name: 'Warranty' })).toBeVisible()
+  await expect(chen.getByRole('heading', { name: 'Maintenance contract' })).toBeVisible()
+  const srUrl = chen.url()
+  await chen.getByRole('button', { name: 'Schedule visit' }).click()
+  d = chen.getByRole('dialog')
+  for (const c of await d.getByRole('checkbox', { name: 'Chen Checker' }).all()) await c.check()
+  await d.getByRole('button', { name: 'Schedule visit' }).click()
+  await expect(d).toBeHidden()
+  await chen.getByRole('link', { name: /^VIS-/ }).click()
+  await chen.getByRole('button', { name: 'Save and mark done' }).click()
+  await expect(chen.getByText(/^Completed on/)).toBeVisible()
+
+  // A maintenance alert: verified, the supplier's code recorded, shown once more (audited), closed.
+  await chen.goto(srUrl)
+  await chen.getByRole('button', { name: 'Register alert' }).click()
+  d = chen.getByRole('dialog')
+  await d.getByLabel('What the alert says').fill('Maintenance due, reset needed')
+  await d.getByRole('button', { name: 'Register alert' }).click()
+  await expect(chen.getByRole('heading', { level: 1 })).toHaveText(/^MA-/)
+  await chen.getByRole('button', { name: 'Verify the battery' }).click()
+  d = chen.getByRole('dialog')
+  for (const c of await d.getByRole('checkbox').all()) await c.check()
+  await d.getByRole('button', { name: 'Confirm verification' }).click()
+  await chen.getByRole('button', { name: 'Record the code' }).click()
+  d = chen.getByRole('dialog')
+  await d.getByLabel('Code').fill(`RST-${s}-QX`)
+  await d.getByLabel('Given to').fill('Facilities manager')
+  await d.getByRole('button', { name: 'Record code' }).click()
+  await expect(d).toBeHidden()
+  await expect(chen.getByText(`RST-${s}-QX`)).toHaveCount(0)
+  await chen.getByRole('button', { name: 'Show the code' }).click()
+  d = chen.getByRole('dialog')
+  await d.getByLabel('Why do you need it?').fill('Customer asked again')
+  await d.getByRole('button', { name: 'Show code' }).click()
+  await expect(d.getByText(`RST-${s}-QX`)).toBeVisible()
+  await shot(chen, '43-code')
+  await d.getByRole('button', { name: /Close/ }).first().click()
+  await chen.getByRole('button', { name: 'Close alert' }).click()
+  d = chen.getByRole('dialog')
+  await d.getByLabel('Note').fill('Alarm cleared on site')
+  await d.getByRole('button', { name: 'Close alert' }).click()
+  await expect(chen.getByText(/alert cleared/)).toBeVisible()
+
+  await chen.goto(srUrl)
+  await chen.getByRole('button', { name: 'Close request' }).click()
+  d = chen.getByRole('dialog')
+  await d.getByLabel('Closure notes').fill('Maintenance done and alarm reset')
+  await d.getByRole('button', { name: 'Close request' }).click()
+  await expect(chen.getByText(/^Closed: Repaired/)).toBeVisible()
+  await shot(chen, '44-service-closed')
+
+  await chen.setViewportSize({ width: 390, height: 844 })
+  await chen.goto(srUrl)
+  await expect(chen.getByRole('heading', { level: 1 })).toBeVisible()
+  expect(await chen.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+})

@@ -99,6 +99,10 @@ function WorkQueue() {
     ['Your site visits to do', useTotal('installation.record', '/visits?mine=true&status=scheduled,started&limit=1'), '/installation/visits'],
     ['Battery banks to commission', useTotal('installation.create', '/banks?status=installed&limit=1'), '/installation/banks'],
     ['Battery banks to hand over', useTotal('installation.create', '/banks?status=commissioned&limit=1'), '/installation/banks'],
+    ['Service requests still open', useTotal('service.create', '/service-requests?status=new,under_review,scheduled,in_progress,pending_action&limit=1'), '/service'],
+    ['Warranty registrations to decide', useTotal('warranty.approve', '/warranty-registrations?status=pending&limit=1'), '/warranty'],
+    ['Maintenance contracts to renew', useTotal('amc.create', '/amc?expiring=true&limit=1'), '/amc'],
+    ['Maintenance alerts waiting for a code', useTotal('codes.reveal', '/maintenance-alerts?status=verified&limit=1'), '/service/alerts'],
     ['Dispatches planned or on the way', useTotal('dispatch.create', '/dispatches?status=planned,dispatched&limit=1'), '/dispatch'],
   ]
   const shown = rows.filter(([, n]) => n !== undefined)
