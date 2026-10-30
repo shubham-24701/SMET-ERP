@@ -1,0 +1,136 @@
+import { expect, test, type Page } from '@playwright/test'
+import { ADMIN, go, newPassword, seedPeople, shot, signIn, signInAsAdmin, signOut } from './helpers'
+
+// Synthetic data only. Two people in two browsers: Maya sells, Chen approves.
+async function signedIn(page: Page, who: string, people: Record<string, string>) {
+  const [email, temp] = people[who].split('\n')
+  await page.goto('/')
+  await signIn(page, email, temp)
+  await newPassword(page, temp)
+}
+
+async function api(page: Page, method: 'POST' | 'GET', path: string, data?: object) {
+  const { csrf_token } = await (await page.request.get('/api/v1/auth/csrf')).json()
+  const r = await page.request.fetch(`/api/v1${path}`, { method, data, headers: { 'X-CSRF-Token': csrf_token } })
+  expect(r.ok(), await r.text()).toBeTruthy()
+  return r.json()
+}
+
+test('enquiry to quotation, approval, order, dispatch of exact serials and delivery; a project sheet approved', async ({ page, browser }) => {
+  test.setTimeout(180_000)
+  const s = String(Date.now()).slice(-5)
+  await signInAsAdmin(page)
+  const people = await seedPeople(page)
+  await signOut(page, ADMIN.name)
+  await signedIn(page, 'Maya Maker', people)
+  const chen = await (await browser.newContext()).newPage()
+  await signedIn(chen, 'Chen Checker', people)
+
+  // Data set up through the API (screens for these are covered by the other journeys).
+  const wh = await api(page, 'POST', '/warehouses', { code: `S${s}`, name: 'Sales warehouse' })
+  const store = wh.locations.find((l: { purpose: string }) => l.purpose === 'available')
+  const unit = await api(page, 'POST', '/items', { code: `UNIT-${s}`, name: '12 V 200 Ah battery', kind: 'battery_unit', unit_code: 'PCS', tracking: 'serial' })
+  const adj = await api(page, 'POST', '/adjustments', { key: `k${s}a`.padEnd(10, 'x'), reason: 'Opening stock', lines: [
+    { item_id: unit.id, location_id: store.id, serials_in: [`B${s}1`, `B${s}2`, `B${s}3`] }] })
+  await api(chen, 'POST', `/adjustments/${adj.id}/approve`, { version: adj.version })
+  await api(page, 'POST', '/parties', { code: `C${s}`, name: `Gulf Hospital ${s}`, kinds: ['customer'] })
+
+  // Enquiry → quotation draft → prices → submit.
+  await go(page, 'Enquiries')
+  await page.getByRole('button', { name: 'Record enquiry' }).click()
+  let d = page.getByRole('dialog')
+  await d.getByLabel('Customer').selectOption({ label: `Gulf Hospital ${s}` })
+  await d.getByLabel('Item (if known)').selectOption({ label: `UNIT-${s} · 12 V 200 Ah battery` })
+  await d.getByLabel('Quantity').fill('2')
+  await d.getByRole('button', { name: 'Record enquiry' }).click()
+  await expect(d).toBeHidden()
+  await page.getByRole('row', { name: new RegExp(`Gulf Hospital ${s}`) }).getByRole('button', { name: 'Prepare quotation' }).click()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(/^QT-\d{4}-\d+ · R1$/)
+  const quoteUrl = page.url()
+  await page.getByRole('button', { name: 'Edit draft' }).click()
+  d = page.getByRole('dialog')
+  await d.getByLabel('Unit price').fill('1250')
+  await d.getByRole('button', { name: 'Save draft' }).click()
+  await expect(d).toBeHidden()
+  await page.getByRole('button', { name: 'Submit for approval' }).click()
+  await expect(page.getByText('You prepared or submitted this revision, so someone else approves it.')).toBeVisible()
+
+  // Chen approves in his own browser.
+  await chen.goto(quoteUrl)
+  await chen.getByRole('button', { name: 'Approve' }).click()
+  await chen.getByRole('dialog').getByRole('button', { name: 'Approve' }).click()
+  await expect(chen.getByText('Approved', { exact: true }).first()).toBeVisible()
+
+  // The customer accepts; one sales order; stock reserved; a dispatch of two named serials.
+  await page.reload()
+  await page.getByRole('button', { name: "Record customer's answer" }).click()
+  d = page.getByRole('dialog')
+  await d.getByLabel('Who answered').fill('Dr Noor')
+  await d.getByLabel(/Their reference/).fill('LPO-7781')
+  await d.getByRole('button', { name: 'Record answer' }).click()
+  await page.getByRole('button', { name: 'Create sales order' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Create sales order' }).click()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(/^SO-/)
+  await page.getByRole('button', { name: 'Reserve free stock' }).click()
+  await expect(page.getByRole('row', { name: new RegExp(`UNIT-${s}`) })).toContainText('2')
+  await shot(page, '20-sales-order')
+  await page.getByRole('button', { name: 'Plan a dispatch' }).click()
+  await page.getByLabel('From warehouse').selectOption({ label: `S${s} · Sales warehouse` })
+  await page.getByLabel('Transporter').fill('Al Noor Transport')
+  await page.getByRole('button', { name: `B${s}1` }).click()
+  await page.getByRole('button', { name: `B${s}3` }).click()
+  await page.getByRole('button', { name: 'Plan dispatch' }).click()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(/^DN-/)
+  page.once('dialog', (x) => x.accept())
+  await page.getByRole('button', { name: 'Send' }).click()
+  await expect(page.getByText('On the way').first()).toBeVisible()
+  const dnUrl = page.url()
+
+  // The delivery note prints without the menu.
+  await page.goto(dnUrl.replace('/dispatch/', '/print/dispatch/'))
+  await expect(page.getByRole('heading', { name: 'Delivery note' })).toBeVisible()
+  await expect(page.getByText(`B${s}1, B${s}3`)).toBeVisible()
+  await shot(page, '21-delivery-note')
+
+  await page.goto(dnUrl)
+  await page.getByRole('button', { name: 'Record delivery' }).click()
+  d = page.getByRole('dialog')
+  await d.getByLabel('Received by').fill('Store keeper Ali')
+  await d.getByRole('button', { name: 'Record delivery' }).click()
+  await expect(d).toBeHidden()
+  await expect(page.getByText('Delivered', { exact: true }).first()).toBeVisible()
+  await shot(page, '22-dispatch-delivered')
+
+  // A project: a site, a requirement sheet typed in, reviewed by Chen.
+  await go(page, 'Projects')
+  await page.getByRole('button', { name: 'New project' }).click()
+  d = page.getByRole('dialog')
+  await d.getByLabel('Project name').fill(`Tower backup ${s}`)
+  await d.getByLabel('Customer').selectOption({ label: `Gulf Hospital ${s}` })
+  await d.getByRole('button', { name: 'Create project' }).click()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(`Tower backup ${s}`)
+  const projectUrl = page.url()
+  await page.getByRole('button', { name: 'Add site' }).click()
+  d = page.getByRole('dialog')
+  await d.getByLabel('Site name').fill('Tower A')
+  await d.getByRole('button', { name: 'Add site' }).click()
+  await expect(d).toBeHidden()
+  await page.getByRole('button', { name: 'New requirement sheet' }).click()
+  d = page.getByRole('dialog')
+  await d.getByLabel('Item').selectOption({ label: `UNIT-${s} · 12 V 200 Ah battery` })
+  await d.getByLabel('Quantity').fill('4')
+  await d.getByRole('button', { name: 'Create draft' }).click()
+  await expect(d).toBeHidden()
+  await page.getByRole('button', { name: 'Submit for engineering review' }).click()
+  await chen.goto(projectUrl)
+  await chen.getByRole('button', { name: 'Review' }).click()
+  await chen.getByRole('dialog').getByRole('button', { name: 'Approve quantities' }).click()
+  await expect(chen.getByRole('heading', { name: 'Material list' })).toBeVisible()
+  await expect(chen.getByRole('row', { name: new RegExp(`UNIT-${s}`) }).last()).toContainText('4')
+  await shot(chen, '23-project')
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(projectUrl)
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+})
