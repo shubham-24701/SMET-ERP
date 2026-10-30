@@ -1,7 +1,7 @@
 # Implementation status
 
 **Updated:** 2026-10-30 · **Version:** 0.5.0 · **Current phase:** 6 (warranty and after-sales)
-built and verified locally, on top of Phase 5 (pull request #3, stacked on #2 and #1). Phase 7
+built and verified locally and in CI, on top of Phase 5 (pull request #3, stacked on #2 and #1). Phase 7
 (notifications, dashboards, reports, exports) next on the owner's go-ahead.
 
 Labels used below: **Verified** = automated tests pass locally (and in CI once the run is green);
@@ -31,7 +31,7 @@ Nothing here has been sandbox-tested against an external provider or production-
 | 3 | Assembly & quality: BOM versions, assembly orders, reserve/issue/consume/return, serial assignment with component links, configurable checklists and test parameters, pass/hold/rework, finished-stock receipt only through a passing inspection | **Verified (local + CI)** |
 | 4 | Sales & projects: enquiries, quotations with revisions and approval, sales orders, projects/sites/surveys, requirement sheets with engineering approval and SMET-supplied sizing rules, procurement & assembly links, dispatch and delivery | **Verified (local + CI)** |
 | 5 | Installation & traceability: visits, commissioning, handover, QR labels, battery banks, lifecycle timeline | **Verified (local + CI)** |
-| 6 | Warranty & after-sales: registration/activation, public verification portal, AMC, service requests, replacements, maintenance alerts and reset codes (manual process until a supplier API is confirmed) | **Verified (local)** |
+| 6 | Warranty & after-sales: registration/activation, public verification portal, AMC, service requests, replacements, maintenance alerts and reset codes (manual process until a supplier API is confirmed) | **Verified (local + CI)** |
 | 7 | Notifications (in-app; email/SMS/WhatsApp adapters off until approved), dashboards, reports, exports, file attachments | Planned |
 | 8 | Hardening: 111-checkpoint evidence, performance and concurrency tests, backup/restore drill, deployment package, incident process | Planned |
 | 9 | End-to-end verification, release readiness, activation checklist | Planned |
@@ -128,15 +128,15 @@ Nothing here has been sandbox-tested against an external provider or production-
 | Database setup | `python -m app.setup_db`: two databases, least-privilege logins, `.env` written | used by CI on Linux and Windows |
 | Web app | Sign-in, setup, forced password change, overview (team setup, roles in use, recent changes), users (count-card filters, add/edit/deactivate/reset), roles editor, audit log, company settings, system health; light/dark/system theme; phone layout; permission-aware navigation | Vitest (5), Playwright (2 journeys), design inspector at 1440/768/390 |
 
-## Verification results (2026-10-30, end of Phase 5)
+## Verification results (2026-10-30, end of Phase 6)
 
 See [docs/TEST_RESULTS.md](docs/TEST_RESULTS.md) for the commands and outputs.
 
-- Backend: 109 pytest tests passed (53 Phase 1, 29 Phases 2–3, 18 Phase 4, 9 Phase 5, review regressions included); ruff clean; deprecation warnings treated as errors.
-- Frontend: oxlint and TypeScript clean, 7 Vitest tests, production build OK; no known vulnerabilities in runtime dependencies (pip-audit, npm audit).
-- Browser: 5 Playwright journeys passed locally (Chromium) and in CI (Edge on Windows).
-- CI run 41047826130: every job green (Ubuntu and Windows backends, frontend, Edge on Windows, secret scan, dependency audit).
-- Independent reviews: Phases 2–3, Phase 4 and Phase 5 findings fixed or recorded with their reasons (TEST_RESULTS.md).
+- Backend: 127 pytest tests passed (Phases 1–5: 109; Phase 6: 18 including review regressions); ruff clean; deprecation warnings treated as errors.
+- Frontend: oxlint and TypeScript clean, 7 Vitest tests, production build OK.
+- Browser: 6 Playwright journeys passed locally (Chromium) and in CI (Edge on Windows).
+- CI run 41055578800: every job green (Ubuntu and Windows backends, frontend, Edge on Windows, secret scan, dependency audit).
+- Independent reviews of Phases 2–3, 4, 5 and 6: every finding fixed or recorded with its reason (TEST_RESULTS.md).
 
 ## Known limitations (Phase 6)
 
