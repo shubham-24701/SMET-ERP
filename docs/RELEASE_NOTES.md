@@ -1,5 +1,25 @@
 # Release notes
 
+## 0.4.0 · Phase 5: installation and traceability · 2026-10-30
+
+New
+- Battery banks at a site: place delivered batteries in positions; remove, replace and move them with
+  a reason; every placement is kept.
+- Site visits for installation, commissioning and handover: date, technicians, site readiness,
+  access and contacts. The technicians on a visit confirm the serials received, tick SMET's
+  checklist, take readings, note issues and corrective actions, add photographs and reports, and
+  record the customer's acceptance.
+- A visit completes only when SMET's checks, readings within confirmed limits and the evidence
+  policy are met. Each completion dates the bank's stage; the project's milestones follow.
+- Site checks: SMET's checklists and readings per stage.
+- QR labels printed from the browser; scanning one opens a public check that shows the serial,
+  product and whether it is in service, and nothing about the customer.
+- Find a battery by scanning its label or typing a serial; each battery's whole life on one timeline.
+
+Upgrade
+- `uv sync` (adds python-multipart and segno), then `uv run alembic upgrade head` (migration 0007).
+- Set `FILES_DIR` (e.g. `D:/smet-files`) and, before printing real labels, `PUBLIC_BASE_URL`.
+
 ## 0.3.0 · Phase 4: sales, projects and dispatch · 2026-10-30
 
 New

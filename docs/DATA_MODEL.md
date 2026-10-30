@@ -71,9 +71,25 @@ longer movement document numbers, order editors, count counters, returns not rep
 | `dispatches` (+ `dispatch_lines`) | Order, site, warehouse, dates, destination, transport, acknowledgement, cancellation; lines with quantity, lot, serials, picking location, reserved quantity used, refused and damaged | planned → dispatched → delivered, or cancelled; refused + damaged ≤ sent (CHECK) |
 | `serials.party_id`, `serials.site_id` | Who holds a dispatched unit, and where | Cleared when it comes back |
 
+## Phase 5 tables
+
+| Table | Holds | Key rules |
+| --- | --- | --- |
+| `battery_banks` | Number, site, name, configuration, stage, installation / commissioning / handover dates | planned → installed → commissioned → handed over, one step per completed visit; (site, name) unique |
+| `bank_positions` | Which battery was in which position of which bank, from when to when, why it started and ended, who, the battery it replaced, the visit | Closed, never rewritten; at most one open row per battery and per bank position (partial unique indexes); the app login cannot delete |
+| `stage_checks` | SMET's checklist lines and readings per stage, with unit and limits | Limits judged only once `confirmed` |
+| `site_visits` | Number, site, stage, banks, date and time, technicians, readiness, access, contacts; the record: serials received, checklist and readings (copied with the text and limits that applied), observations, issues, customer acknowledgement; completion | scheduled → started → completed, or cancelled; the record is frozen once completed; the app login cannot delete |
+| `files` | Owner (a visit), kind, original name, type read from the content, size, SHA-256, caption, uploader | Bytes on disk under a random name in `FILES_DIR`; the app login can't change or delete a row |
+| `serials.qr_token` | Random 32-character token printed in the QR label | Unique; not derived from any id |
+| `dispatches.delivered_at` | When the delivery was recorded | Orders the lifecycle timeline |
+
+A battery's status follows its bank: delivered (planned bank), installed, commissioned, in service
+(handed over), removed. The lifecycle timeline is not a table: it is read from stock movements,
+inspections, dispatches, bank positions and completed visits, so it can't disagree with them.
+
 ## Planned entities (from the proposal, by phase)
 
-Phases 2 and 3 are built (above).
+Phases 2 to 5 are built (above).
 
 - **4** enquiries, quotations and immutable revisions, sales orders; projects, sites, surveys,
   requirement sheets, milestones, tasks, scope changes; dispatches, lines with exact serials,

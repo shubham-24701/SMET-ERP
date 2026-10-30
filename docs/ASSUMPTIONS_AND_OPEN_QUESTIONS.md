@@ -31,6 +31,10 @@ commissioning".
 | A17 | A quotation is valid for 30 days unless a date is typed (question 10b) | SMET's usual validity differs |
 | A18 | Battery quantities on a requirement sheet are typed in and approved by an engineer; no sizing formula is built in (question 15) | SMET supplies its rules, entered under Sizing rules |
 | A19 | Goods refused at delivery come back into a customer-returns area, on hold, and are owed again on the order (question 23) | SMET handles refusals differently |
+| A20 | An installation visit needs at least one photograph; commissioning and handover need none; a handover needs the customer's name and date, and no open issue on its visit. All changeable in Rules & numbering (questions 16, 31) | SMET sets its evidence policy |
+| A21 | No installation or commissioning checklist and no readings are built in: SMET enters them under Site checks, and a reading's limits apply only once SMET confirms them (question 16) | — |
+| A22 | Batteries are grouped in banks; the three stages (installed, commissioned, handed over) are dated per bank (question 32) | SMET records stages per site or per battery |
+| A23 | A QR label carries only a web address with a random code; anyone scanning it sees the serial number, the product and whether it is in service. Labels are printed from the browser on any printer; no paid QR service (questions 33, 34) | SMET wants more on the public page (warranty comes in Phase 6) |
 
 Technical choices (database, sign-in mechanism) are recorded for developers in
 [engineering/ARCHITECTURE_DECISIONS.md](engineering/ARCHITECTURE_DECISIONS.md).
@@ -128,3 +132,14 @@ safe default, but they must be answered before the system is used for real.
     b. During rework, are components ever swapped (for example a weak cell)? If so, which ones?
 30. **Orders without a quotation (Phase 4).** Do distributors place repeat orders at agreed prices without a
     new quotation? *(Default: every sales order comes from an accepted quotation.)*
+31. **Evidence before completion (Phase 5).** How many photographs at installation, commissioning and
+    handover; is a signed handover form always attached; may a handover complete with snags still
+    open? *(Default: A20.)*
+32. **Battery banks (Phase 5).** How SMET names banks and positions on site (string and cell number,
+    rack and shelf), and whether stages are signed off per bank or per site. *(Default: A22.)*
+33. **Labels (Phase 5).** Label size and printer (thermal label printer or A4 sheets), what goes on the
+    label besides the QR code and serial, and when labels are printed (after inspection, or at
+    dispatch). *(Default: 90 × 40 mm, any printer, printed from the battery or the bank.)*
+34. **Public address (Phase 5, before printing real labels).** The internet address QR labels should
+    open (e.g. a subdomain of SMET's website). Labels printed before it is set point to this computer
+    only. *(Needs the hosting decision, open question on hosting.)*
