@@ -9,7 +9,7 @@ activates it**. Prices will be checked from the providers' own pages before any 
 | --- | --- | --- | --- | --- | --- |
 | Email | Warranty confirmations, maintenance and AMC reminders, service updates, approval requests, password resets | 7 | Not built | Which mailbox sends (Microsoft 365 or Google Workspace via SMTP, or a transactional service); a sender address | Often free with an existing mailbox; transactional services charge per volume. To be priced |
 | SMS / WhatsApp | Customer reminders and service notifications | 7 | Not built | Choice of channel and provider; for WhatsApp, a Meta business account and approved templates; consent for each recipient | Per message; to be priced |
-| Battery supplier / BMS API | Receiving maintenance alerts; obtaining reset codes | 6 | Not built: **no supplier documentation yet** | Supplier name, API documentation, credentials, test environment | Unknown until the supplier answers |
+| Battery supplier / BMS API | Receiving maintenance alerts; obtaining reset codes | 6 | **Manual process built** (authorised staff type in the supplier's code; encrypted, audited, erased after retention). No supplier was named and no documentation exists, so no endpoint was assumed and nothing claims automatic generation, expiry or clearing | Supplier name, API documentation, credentials, test environment (question 22) | Unknown until the supplier answers |
 | Cloud file storage | Installation photos, warranty evidence, service documents | 7 | Not built: files will be stored on the server's disk first, behind permission checks | Hosting decision (Phase 8) | Small (per GB); to be priced with hosting |
 
 QR codes and serial-number verification are built into the platform with an open-source library (no

@@ -1,8 +1,8 @@
 # Implementation status
 
-**Updated:** 2026-10-30 · **Version:** 0.4.0 · **Current phase:** 5 (installation and traceability)
-built and verified locally and in CI, on top of Phase 4 (pull request #2, itself on #1). Phase 6 (warranty and
-after-sales) next on the owner's go-ahead.
+**Updated:** 2026-10-30 · **Version:** 0.5.0 · **Current phase:** 6 (warranty and after-sales)
+built and verified locally, on top of Phase 5 (pull request #3, stacked on #2 and #1). Phase 7
+(notifications, dashboards, reports, exports) next on the owner's go-ahead.
 
 Labels used below: **Verified** = automated tests pass locally (and in CI once the run is green);
 **Built, not yet verified** = code exists, the check has not run; **Planned** = not built.
@@ -31,10 +31,28 @@ Nothing here has been sandbox-tested against an external provider or production-
 | 3 | Assembly & quality: BOM versions, assembly orders, reserve/issue/consume/return, serial assignment with component links, configurable checklists and test parameters, pass/hold/rework, finished-stock receipt only through a passing inspection | **Verified (local + CI)** |
 | 4 | Sales & projects: enquiries, quotations with revisions and approval, sales orders, projects/sites/surveys, requirement sheets with engineering approval and SMET-supplied sizing rules, procurement & assembly links, dispatch and delivery | **Verified (local + CI)** |
 | 5 | Installation & traceability: visits, commissioning, handover, QR labels, battery banks, lifecycle timeline | **Verified (local + CI)** |
-| 6 | Warranty & after-sales: registration/activation, public verification portal, AMC, service requests, replacements, maintenance alerts and reset codes (manual process until a supplier API is confirmed) | Planned |
+| 6 | Warranty & after-sales: registration/activation, public verification portal, AMC, service requests, replacements, maintenance alerts and reset codes (manual process until a supplier API is confirmed) | **Verified (local)** |
 | 7 | Notifications (in-app; email/SMS/WhatsApp adapters off until approved), dashboards, reports, exports, file attachments | Planned |
 | 8 | Hardening: 111-checkpoint evidence, performance and concurrency tests, backup/restore drill, deployment package, incident process | Planned |
 | 9 | End-to-end verification, release readiness, activation checklist | Planned |
+
+## Phase 6: what was built
+
+| Area | What works | Evidence |
+| --- | --- | --- |
+| Warranty policies | Per battery model, entered by SMET: months, the event that starts it, automatic or manual approval, proof needed, replacement rule, in force from a date; terms in use can't change; none shipped | `test_aftersales.py::test_a_distributor_sale_is_checked…` |
+| Registration | Opened at handover for every battery of the bank; by staff for distributor and direct sales; on the public form. Serial, sale status, customer, dates and proof checked against the policy in force; one open registration per battery; start and expiry calculated; pending, correction required, approved, rejected, ended | `::test_smet_installation_activates_by_policy…`, `::test_a_distributor_sale_is_checked…` |
+| Decisions | Automatic only where the policy allows and nothing is missing; otherwise someone other than the submitter; reasons kept | same |
+| Corrections | Approved warranties corrected only with `warranty.correct` and a reason; dates worked out again; every change in the audit log; refused attempts audited | same |
+| Distributor dispatch | Never starts a warranty | `::test_smet_installation_activates_by_policy_at_handover_and_never_at_dispatch` |
+| Public portal | `/verify` and the QR label: product, in service or not, warranty state (dates if allowed), the note that a record is not proof of authenticity; register or ask for service, answered the same either way; rate-limited; a hashed address logged when a limit is hit | `::test_the_public_forms_land_as_pending_work…`, `phase6.spec.ts` |
+| AMC | Customer, site, banks or chosen batteries; covered and excluded services; planned maintenance visits; reminders for upcoming, overdue and ending contracts; renewal keeps the old contract and its visits; cancellation cancels future visits | `::test_amc_plans_visits_and_its_coverage_is_never_inferred_from_warranty` |
+| Coverage | Warranty and AMC checked separately and shown side by side; neither inferred from the other | same |
+| Service requests | New → under review → scheduled → in progress → pending action → closed by allowed moves only, each with who, when and why; coordinator, priority, diagnosis, work done; service visits recorded by the technicians; workshop receipt and return, parts and replacements as stock movements with operation keys; closing needs no open visit or alert | `::test_a_service_request_moves_by_the_rules…` |
+| Replacement | Linked to the original in the bank and on the request; its warranty follows the original's policy (rest of term, new term or longer); the original's ends; histories kept | `::test_a_replacement_is_linked_to_the_original_and_takes_its_warranty` |
+| Reset codes | Alert → verification of serial, customer and location → completed inspection visit → code typed in by `codes.reveal`, encrypted, recorded once; reveal needs a reason and is audited; never in lists, the audit log or the application log; erased after the retention period; cleared or not recorded as seen on site | `::test_a_service_request_moves_by_the_rules_and_a_reset_code_stays_secret` |
+| Lifecycle | Warranty decisions, service requests and alerts on each battery's timeline; current warranty and AMC on the battery page | `::test_a_replacement_is_linked…` |
+| Screens | Service requests, maintenance contracts with reminders, warranty registrations and policies, maintenance alerts, the public page; after-sales rules in Rules & numbering; dashboard lines | `phase6.spec.ts` |
 
 ## Phase 5: what was built
 
@@ -118,6 +136,13 @@ See [docs/TEST_RESULTS.md](docs/TEST_RESULTS.md) for the commands and outputs.
 - Browser: 5 Playwright journeys passed locally (Chromium) and in CI (Edge on Windows).
 - CI run 41047826130: every job green (Ubuntu and Windows backends, frontend, Edge on Windows, secret scan, dependency audit).
 - Independent reviews: Phases 2–3, Phase 4 and Phase 5 findings fixed or recorded with their reasons (TEST_RESULTS.md).
+
+## Known limitations (Phase 6)
+
+- No notifications are sent yet: reminders and status changes are lists and dashboard lines until Phase 7 adds in-app notices (email, SMS and WhatsApp wait for approval).
+- Distributors and customers have no login of their own; the public form and SMET staff cover registration and requests (question 36).
+- Reset codes are recorded by hand: no supplier API is known (question 22).
+- Service requests have no response-time targets (question 35).
 
 ## Known limitations (Phase 5)
 

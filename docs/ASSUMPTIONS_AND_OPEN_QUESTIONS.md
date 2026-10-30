@@ -34,6 +34,13 @@ commissioning".
 | A20 | An installation visit needs at least one photograph; commissioning and handover need none; a handover needs the customer's name and date, and no open issue on its visit. All changeable in Rules & numbering (questions 16, 31) | SMET sets its evidence policy |
 | A21 | No installation or commissioning checklist and no readings are built in: SMET enters them under Site checks, and a reading's limits apply only once SMET confirms them (question 16) | — |
 | A22 | Batteries are grouped in banks; the three stages (installed, commissioned, handed over) are dated per bank (question 32) | SMET records stages per site or per battery |
+| A24 | No warranty term is built in: each model's policy is entered by SMET (months, the event that starts it, automatic or manual approval, proof needed, replacement rule). Until then registrations wait with "no policy" (question 17) | — |
+| A25 | Sending stock to a distributor never starts a warranty; a SMET installation opens one for each battery at handover; distributors' and customers' sales are registered by SMET staff or on the public form, and need someone other than the submitter to approve unless the policy approves automatically (questions 17c, 18) | SMET's policy says otherwise |
+| A26 | A warranty runs to the day before the same date N months later (12 months from 15 Mar ends 14 Mar) | SMET counts differently |
+| A27 | An AMC's first planned visit is one interval after its start; renewal reminders go out 60 days before it ends (question 21) | SMET plans visits differently |
+| A28 | The public check shows the product, whether it is in service and the warranty state; dates only if SMET switches them on (question 20) | — |
+| A29 | Reset codes are typed in by an authorised person from the supplier; stored encrypted; erased 365 days after the alert closes. The system never generates, expires or clears a code (question 22) | The supplier offers an API |
+| A30 | A replaced battery goes to the "Service workshop" area of a warehouse; what happens next (repair, scrap, return to the supplier) is decided case by case (question 23) | SMET defines a returns process |
 | A23 | A QR label carries only a web address with a random code; anyone scanning it sees the serial number, the product and whether it is in service. Labels are printed from the browser on any printer; no paid QR service (questions 33, 34) | SMET wants more on the public page (warranty comes in Phase 6) |
 
 Technical choices (database, sign-in mechanism) are recorded for developers in
@@ -143,3 +150,8 @@ safe default, but they must be answered before the system is used for real.
 34. **Public address (Phase 5, before printing real labels).** The internet address QR labels should
     open (e.g. a subdomain of SMET's website). Labels printed before it is set point to this computer
     only. *(Needs the hosting decision, open question on hosting.)*
+35. **Service levels (Phase 6).** How fast must SMET answer an urgent, high, normal or low request, and
+    who coordinates service requests? *(Default: no deadlines; urgent ones are listed first.)*
+36. **Distributor and customer logins.** Should distributors register their sales and customers
+    see their own batteries through their own login, rather than the public form and SMET staff?
+    *(Default: not built; the public form and SMET staff cover it.)*

@@ -65,3 +65,13 @@ An independent code review (2026-10-28) found 12 defects; 11 are fixed with regr
 | Public check | No sign-in; shows serial, product and an in-service status only; unknown or malformed tokens get the same 404; 30 per minute per address | same, `test_the_public_check_tells_installed…` |
 | Field work | A technician records only visits they are assigned to, and changes only banks their visit covers | `test_a_bank_goes_from_delivery_to_handover…`, `test_a_technician_moves_batteries_only_into_banks_their_visit_covers` |
 | History | Bank placements, visits, banks and file records can't be deleted by the app login; file records can't be changed (migration 0007) | migration 0007, privilege check in TEST_RESULTS.md |
+
+### Phase 6 additions
+
+| Topic | Status | Evidence |
+| --- | --- | --- |
+| Public portal | No sign-in; product, in-service state and warranty state only (dates if SMET allows); same answer whether or not a submitted serial exists; 30 checks/min and 5 submissions/hour per address; a hashed address is logged on abuse | `test_the_public_forms_land_as_pending_work_and_say_the_same_thing_either_way`, `test_smet_installation_activates_by_policy…` |
+| Reset codes | Encrypted at rest (Fernet, `CODES_KEY` in `.env`); never returned in lists or written to the audit or application log; revealed only with `codes.reveal` and a reason, each view audited; erased after the retention period | `test_a_service_request_moves_by_the_rules_and_a_reset_code_stays_secret` |
+| Refused attempts | Approvals, corrections, codes, exports, settings, users and roles: refusals are audited (`access.denied`) | `test_a_distributor_sale_is_checked_against_policy_and_decided_by_someone_else` |
+| Separation | Nobody decides a warranty registration they submitted (configurable); the administrator can grant code access without holding it | `test_the_administrator_can_give_out_code_access_without_holding_it` |
+| History | Warranty, AMC, service and alert records can't be deleted by the app login; `setup_db` keeps every history protection on a re-run | migration 0008, `setup_db.HISTORY_RIGHTS` |
