@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import App from './App'
+import { serialList, words } from './ops'
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 
@@ -53,4 +54,16 @@ describe('App', () => {
     expect(await screen.findByRole('alert')).toBeTruthy()
     expect(screen.getByText(/Cannot reach the server/)).toBeTruthy()
   })
+})
+
+
+it('splits, trims and upper-cases scanned serial numbers', () => {
+  expect(serialList(' c-1\nC-2, c-3;;  c-4 ')).toEqual(['C-1', 'C-2', 'C-3', 'C-4'])
+  expect(serialList('')).toEqual([])
+})
+
+it('shows statuses as words', () => {
+  expect(words('partly_received')).toBe('Partly received')
+  expect(words('under_assembly')).toBe('Built, awaiting inspection')
+  expect(words('closed')).toBe('Closed')
 })

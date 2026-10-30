@@ -7,6 +7,9 @@ import { MODES, type Mode } from './theme'
 import { Dialog, Logo } from './ui'
 import { ChangePasswordForm } from './Auth'
 
+// A path that another menu entry extends ("/stock" vs "/stock/moves") lights up only on itself.
+const PARENTS = new Set(NAV.flatMap((g) => g.items).map((i) => i.path).filter((p) => NAV.some((g) => g.items.some((i) => i.path.startsWith(`${p}/`)))))
+
 function UserMenu({ me, mode, onMode, onSignOut, onPassword }: {
   me: Me; mode: Mode; onMode: (m: Mode) => void; onSignOut: () => void; onPassword: () => void
 }) {
@@ -95,7 +98,7 @@ export function Shell({ me, mode, onMode, onMe, onSignOut }: {
               <p className="nav-group-label">{g.group}</p>
               <ul>
                 {g.items.map(({ path, label, icon: Icon }) => (
-                  <li key={path}><NavLink to={path} end={path === '/'}><Icon size={16} aria-hidden="true" />{label}</NavLink></li>
+                  <li key={path}><NavLink to={path} end={path === '/' || PARENTS.has(path)}><Icon size={16} aria-hidden="true" />{label}</NavLink></li>
                 ))}
               </ul>
             </div>

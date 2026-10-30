@@ -373,3 +373,38 @@ body > #root > .page-state { margin: 80px auto; }
 .bar-top { background: var(--text); }
 .caption { margin: 12px 0 0; }
 .stack > .panel { margin: 0; }
+
+/* ---------- operations screens (Phases 2–3): forms with lines, records, comparisons ---------- */
+.grid-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); column-gap: 16px; }
+.lines { display: grid; gap: 8px; margin-block-end: 16px; }
+.lines legend { margin-block-end: 8px; }
+.line { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-end; padding: 8px 0; border-block-end: 1px solid var(--rule); }
+.line > label { display: grid; gap: 4px; }
+.line-item { flex: 1 1 240px; min-inline-size: 0; }
+.line-label { font-size: var(--fs-small); line-height: 16px; color: var(--muted); }
+.line .btn-ghost { align-self: flex-end; }
+.check.inline { align-self: center; flex: none; }
+.row-checks { display: flex; flex-wrap: wrap; gap: 12px 24px; }
+.row-checks legend { inline-size: 100%; }
+.back { margin: 0 0 8px; }
+.back a { color: var(--muted); }
+h3.sub { font-size: var(--fs-body); font-weight: 600; margin: 16px 0 8px; }
+.compare { margin-block-end: var(--gap); }
+.compare caption { text-align: start; padding: 12px 16px 4px; font-weight: 500; }
+.best { display: block; color: var(--accent); font-weight: 500; }
+.low { display: block; color: var(--pill-warning-ink); font-weight: 500; }
+.row-end { display: inline-flex; align-items: center; gap: 12px; flex: none; }
+.prewrap { white-space: pre-wrap; }
+.toolbar-check { align-self: center; margin-block-end: 8px; }
+.seq-fields { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.seq-fields input[name='prefix'] { inline-size: 110px; }
+.seq-fields input[name='padding'] { inline-size: 70px; }
+.inline-field { display: grid; gap: 4px; margin: 0; min-inline-size: 240px; }
+.inline-field > span { font-weight: 500; }
+.limits { align-self: center; }
+.table td input, .table td select, .table td textarea { min-inline-size: 90px; }
+.table caption code { margin-inline-end: 6px; }
+/* screen-reader-only text inside a wide table is positioned: keep it inside the scrolling box, or
+   it stretches the whole page sideways on a phone */
+.table-wrap { position: relative; }
+.feed.panel { padding: 4px var(--card-pad); }

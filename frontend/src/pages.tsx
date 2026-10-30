@@ -79,6 +79,37 @@ function RecentChanges({ events }: { events: Events }) {
   )
 }
 
+type Total = { total: number }
+
+/** What waits on this person's roles: each line is a count with the page that clears it. */
+function useTotal(perm: string, path: string) {
+  const can = useCan()
+  return useApi<Total>(can(perm) ? path : null).data?.total
+}
+
+function WorkQueue() {
+  const rows: [string, number | undefined, string][] = [
+    ['Purchase orders waiting for approval', useTotal('purchasing.approve', '/purchase-orders?status=submitted&limit=1'), '/purchasing/orders'],
+    ['Approved orders not yet delivered', useTotal('receipts.create', '/purchase-orders?status=approved,partly_received&limit=1'), '/purchasing/orders'],
+    ['Stock corrections waiting for approval', useTotal('adjustments.approve', '/adjustments?status=pending&limit=1'), '/stock/corrections'],
+    ['Items below minimum stock', useTotal('stock.view', '/stock/summary?low=true&limit=1'), '/stock'],
+    ['Batteries waiting for inspection', useTotal('quality.create', '/inspections/queue?limit=1'), '/assembly/inspection'],
+    ['Open purchase requests', useTotal('purchasing.create', '/purchase-requests?status=open&limit=1'), '/purchasing/requests'],
+  ]
+  const shown = rows.filter(([, n]) => n !== undefined)
+  if (!shown.length) return null
+  return (
+    <section className="panel" aria-labelledby="work-title">
+      <h2 id="work-title">Waiting for you</h2>
+      <ul className="feed">
+        {shown.map(([label, n, to]) => (
+          <li key={label}><span>{n ? <Link to={to}>{label}</Link> : <span className="muted">{label}</span>}</span><strong className="num">{n}</strong></li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
 export function Dashboard() {
   const me = useMe()
   const can = useCan()
@@ -104,6 +135,7 @@ export function Dashboard() {
       )}
       <div className="grid-2">
         <div className="stack">
+          <WorkQueue />
           {users.data && <TeamSetup users={users.data} />}
           {roles.data && <RolesInUse roles={roles.data} team={c?.active ?? 0} />}
         </div>

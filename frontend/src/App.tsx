@@ -3,7 +3,11 @@ import { BrowserRouter, Link, Navigate, Route, Routes } from 'react-router'
 import { api, ApiError, type Me } from './api'
 import { ForcedPasswordPage, LoginPage, SetupPage } from './Auth'
 import { AuditPage, CompanyPage, RolesPage, SystemPage, UsersPage } from './Admin'
+import { AssemblyOrderPage, AssemblyOrdersPage, BomsPage, InspectionPage } from './Assembly'
+import { ItemsPage, PartiesPage, RulesPage, WarehousesPage } from './Masters'
 import { Dashboard } from './pages'
+import { PurchaseOrderPage, PurchaseOrdersPage, PurchaseRequestPage, PurchaseRequestsPage } from './Purchasing'
+import { CorrectionsPage, CountPage, MovesPage, ReservationsPage, SerialPage, SerialsPage, StockPage } from './Stock'
 import { Shell } from './Shell'
 import { PageState } from './ui'
 import { MeContext } from './lib'
@@ -52,6 +56,25 @@ export default function App() {
         <Routes>
           <Route element={<Shell me={me} mode={mode} onMode={setMode} onMe={setMe} onSignOut={() => { window.history.replaceState(null, '', '/'); setMe(null) }} />}>
             <Route index element={<Dashboard />} />
+            <Route path="purchasing/requests" element={<Allowed perm="purchasing.view" me={me}><PurchaseRequestsPage /></Allowed>} />
+            <Route path="purchasing/requests/:id" element={<Allowed perm="purchasing.view" me={me}><PurchaseRequestPage /></Allowed>} />
+            <Route path="purchasing/orders" element={<Allowed perm="purchasing.view" me={me}><PurchaseOrdersPage /></Allowed>} />
+            <Route path="purchasing/orders/:id" element={<Allowed perm="purchasing.view" me={me}><PurchaseOrderPage /></Allowed>} />
+            <Route path="stock" element={<Allowed perm="stock.view" me={me}><StockPage /></Allowed>} />
+            <Route path="stock/moves" element={<Allowed perm="stock.view" me={me}><MovesPage /></Allowed>} />
+            <Route path="stock/serials" element={<Allowed perm="stock.view" me={me}><SerialsPage /></Allowed>} />
+            <Route path="stock/serials/:id" element={<Allowed perm="stock.view" me={me}><SerialPage /></Allowed>} />
+            <Route path="stock/reservations" element={<Allowed perm="stock.view" me={me}><ReservationsPage /></Allowed>} />
+            <Route path="stock/corrections" element={<Allowed perm="stock.view" me={me}><CorrectionsPage /></Allowed>} />
+            <Route path="stock/counts/:id" element={<Allowed perm="stock.view" me={me}><CountPage /></Allowed>} />
+            <Route path="assembly/orders" element={<Allowed perm="assembly.view" me={me}><AssemblyOrdersPage /></Allowed>} />
+            <Route path="assembly/orders/:id" element={<Allowed perm="assembly.view" me={me}><AssemblyOrderPage /></Allowed>} />
+            <Route path="assembly/inspection" element={<Allowed perm="assembly.view" me={me}><InspectionPage /></Allowed>} />
+            <Route path="assembly/boms" element={<Allowed perm="bom.view" me={me}><BomsPage /></Allowed>} />
+            <Route path="masters/items" element={<Allowed perm="items.view" me={me}><ItemsPage /></Allowed>} />
+            <Route path="masters/parties" element={<Allowed perm="parties.view" me={me}><PartiesPage /></Allowed>} />
+            <Route path="masters/warehouses" element={<Allowed perm="warehouses.view" me={me}><WarehousesPage /></Allowed>} />
+            <Route path="admin/rules" element={<Allowed perm="settings.view" me={me}><RulesPage /></Allowed>} />
             <Route path="admin/users" element={<Allowed perm="users.view" me={me}><UsersPage /></Allowed>} />
             <Route path="admin/roles" element={<Allowed perm="roles.view" me={me}><RolesPage /></Allowed>} />
             <Route path="admin/audit" element={<Allowed perm="audit.view" me={me}><AuditPage /></Allowed>} />

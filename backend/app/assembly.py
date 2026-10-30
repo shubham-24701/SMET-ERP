@@ -57,11 +57,13 @@ from app.models import (
     Item,
     Location,
     Reservation,
+    RolePermission,
     Serial,
     SerialComponent,
     StockMove,
     TestParameter,
     User,
+    UserRole,
     Warehouse,
     utcnow,
 )
@@ -437,6 +439,16 @@ def order_row(db: Session, ao: AssemblyOrder, full: bool = False) -> dict:
         row["serials_on_floor"] = [{"serial": s, "item_id": i} for s, i in floor_serials]
         row["assembly_location"] = label(db, warehouse_location(db, wh.id, "assembly"))
     return row
+
+
+@router.get("/assembly-orders/people")
+def assembly_people(_: require("assembly.view"), db: DB) -> dict:
+    """Who can be responsible for an order: active users allowed to work on assembly orders."""
+    rows = db.execute(select(User.id, User.name).join(UserRole, UserRole.user_id == User.id)
+                      .join(RolePermission, RolePermission.role_id == UserRole.role_id)
+                      .where(User.active, RolePermission.permission == "assembly.edit")
+                      .distinct().order_by(User.name)).all()  # fmt: skip
+    return {"items": [{"id": i, "name": n} for i, n in rows]}
 
 
 @router.get("/assembly-orders")
