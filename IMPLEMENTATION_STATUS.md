@@ -1,7 +1,7 @@
 # Implementation status
 
 **Updated:** 2026-10-30 · **Version:** 0.4.0 · **Current phase:** 5 (installation and traceability)
-built and verified locally, on top of Phase 4 (pull request #2, itself on #1). Phase 6 (warranty and
+built and verified locally and in CI, on top of Phase 4 (pull request #2, itself on #1). Phase 6 (warranty and
 after-sales) next on the owner's go-ahead.
 
 Labels used below: **Verified** = automated tests pass locally (and in CI once the run is green);
@@ -30,7 +30,7 @@ Nothing here has been sandbox-tested against an external provider or production-
 | 2 | Master data (models, items, units, parties, warehouses, numbering, business rules), suppliers & procurement (requests, quotations and comparison, POs with approval, receipts & inspection, returns), inventory (ledger, reservations, transfers, counts, corrections, reconciliation, serials) | **Verified (local + CI)** |
 | 3 | Assembly & quality: BOM versions, assembly orders, reserve/issue/consume/return, serial assignment with component links, configurable checklists and test parameters, pass/hold/rework, finished-stock receipt only through a passing inspection | **Verified (local + CI)** |
 | 4 | Sales & projects: enquiries, quotations with revisions and approval, sales orders, projects/sites/surveys, requirement sheets with engineering approval and SMET-supplied sizing rules, procurement & assembly links, dispatch and delivery | **Verified (local + CI)** |
-| 5 | Installation & traceability: visits, commissioning, handover, QR labels, battery banks, lifecycle timeline | **Verified (local)** |
+| 5 | Installation & traceability: visits, commissioning, handover, QR labels, battery banks, lifecycle timeline | **Verified (local + CI)** |
 | 6 | Warranty & after-sales: registration/activation, public verification portal, AMC, service requests, replacements, maintenance alerts and reset codes (manual process until a supplier API is confirmed) | Planned |
 | 7 | Notifications (in-app; email/SMS/WhatsApp adapters off until approved), dashboards, reports, exports, file attachments | Planned |
 | 8 | Hardening: 111-checkpoint evidence, performance and concurrency tests, backup/restore drill, deployment package, incident process | Planned |
@@ -109,16 +109,15 @@ Nothing here has been sandbox-tested against an external provider or production-
 | Database setup | `python -m app.setup_db`: two databases, least-privilege logins, `.env` written | used by CI on Linux and Windows |
 | Web app | Sign-in, setup, forced password change, overview (team setup, roles in use, recent changes), users (count-card filters, add/edit/deactivate/reset), roles editor, audit log, company settings, system health; light/dark/system theme; phone layout; permission-aware navigation | Vitest (5), Playwright (2 journeys), design inspector at 1440/768/390 |
 
-## Verification results (2026-10-30, end of Phase 4)
+## Verification results (2026-10-30, end of Phase 5)
 
 See [docs/TEST_RESULTS.md](docs/TEST_RESULTS.md) for the commands and outputs.
 
-- Backend: 100 pytest tests passed (53 Phase 1, 29 Phases 2–3, 18 Phase 4 incl. review regressions); ruff clean; deprecation warnings treated as errors.
-- Frontend: oxlint and TypeScript clean, 7 Vitest tests, production build OK.
-- Browser: 4 Playwright journeys passed locally (Chromium), including Phases 2–3 and Phase 4.
-- CI (GitHub Actions, public repository since 2026-10-30): every job green on the Phase 1 branch and on
-  this branch: Ubuntu and Windows backends, frontend, Edge on Windows, secret scan, dependency audit.
-- Independent review of Phases 2–3: 2 high, 6 medium and 9 low findings; every one fixed or recorded with its reason (TEST_RESULTS.md).
+- Backend: 109 pytest tests passed (53 Phase 1, 29 Phases 2–3, 18 Phase 4, 9 Phase 5, review regressions included); ruff clean; deprecation warnings treated as errors.
+- Frontend: oxlint and TypeScript clean, 7 Vitest tests, production build OK; no known vulnerabilities in runtime dependencies (pip-audit, npm audit).
+- Browser: 5 Playwright journeys passed locally (Chromium) and in CI (Edge on Windows).
+- CI run 41047826130: every job green (Ubuntu and Windows backends, frontend, Edge on Windows, secret scan, dependency audit).
+- Independent reviews: Phases 2–3, Phase 4 and Phase 5 findings fixed or recorded with their reasons (TEST_RESULTS.md).
 
 ## Known limitations (Phase 5)
 
