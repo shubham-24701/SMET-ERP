@@ -11,6 +11,7 @@ import { ProjectPage, ProjectsPage, SizingRulesPage } from './Projects'
 import { EnquiriesPage, QuotationPage, QuotationsPage, SalesOrderPage, SalesOrdersPage } from './Sales'
 import { PurchaseOrderPage, PurchaseOrdersPage, PurchaseRequestPage, PurchaseRequestsPage } from './Purchasing'
 import { CorrectionsPage, CountPage, MovesPage, ReservationsPage, SerialPage, SerialsPage, StockPage } from './Stock'
+import { BankPage, BanksPage, LabelsPage, StageChecksPage, TracePage, VisitPage, VisitsPage } from './Installation'
 import { Shell } from './Shell'
 import { PageState } from './ui'
 import { MeContext } from './lib'
@@ -57,6 +58,7 @@ export default function App() {
     <MeContext value={me}>
       <BrowserRouter>
         <Routes>
+          <Route path="print/labels" element={<Allowed perm="stock.view" me={me}><LabelsPage /></Allowed>} />
           <Route path="print/dispatch/:id" element={<Allowed perm="dispatch.view" me={me}><DeliveryNotePage /></Allowed>} />
           <Route element={<Shell me={me} mode={mode} onMode={setMode} onMe={setMe} onSignOut={() => { window.history.replaceState(null, '', '/'); setMe(null) }} />}>
             <Route index element={<Dashboard />} />
@@ -68,6 +70,12 @@ export default function App() {
             <Route path="dispatch" element={<Allowed perm="dispatch.view" me={me}><DispatchesPage /></Allowed>} />
             <Route path="dispatch/new" element={<Allowed perm="dispatch.create" me={me}><NewDispatchPage /></Allowed>} />
             <Route path="dispatch/:id" element={<Allowed perm="dispatch.view" me={me}><DispatchPage /></Allowed>} />
+            <Route path="installation/visits" element={<Allowed perm="installation.view" me={me}><VisitsPage /></Allowed>} />
+            <Route path="installation/visits/:id" element={<Allowed perm="installation.view" me={me}><VisitPage /></Allowed>} />
+            <Route path="installation/banks" element={<Allowed perm="installation.view" me={me}><BanksPage /></Allowed>} />
+            <Route path="installation/banks/:id" element={<Allowed perm="installation.view" me={me}><BankPage /></Allowed>} />
+            <Route path="installation/checks" element={<StageChecksPage />} />
+            <Route path="trace" element={<Allowed perm="stock.view" me={me}><TracePage /></Allowed>} />
             <Route path="projects" element={<Allowed perm="projects.view" me={me}><ProjectsPage /></Allowed>} />
             <Route path="projects/rules" element={<Allowed perm="projects.view" me={me}><SizingRulesPage /></Allowed>} />
             <Route path="projects/:id" element={<Allowed perm="projects.view" me={me}><ProjectPage /></Allowed>} />

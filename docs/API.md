@@ -87,3 +87,19 @@ Quantities are JSON numbers.
 | Requirement sheets | `POST /projects/{id}/sheets`, `PUT /sheets/{id}`, `POST /sheets/{id}/submit` | projects.create |
 | Material list | `POST /projects/{id}/reserve` (+ stock.create), `…/purchase-request`, `…/assembly-order` (assembly.create), `…/quotation` (sales.create) | projects.create / view |
 | Sizing rules | `GET /sizing-rules`, `POST /sizing-rules/{id}/evaluate`; `POST /sizing-rules`, `PUT /sizing-rules/{id}` | projects.view; projects.configure |
+
+## Phase 5 routes
+
+| Area | Routes | Permission |
+| --- | --- | --- |
+| Battery banks | `GET /banks`, `/banks/{id}`, `/sites/{id}/banks`, `/sites/{id}/batteries` (delivered, not in a bank); `POST /sites/{id}/banks`, `PUT /banks/{id}` | installation.view; installation.create |
+| Bank changes | `POST /banks/{id}/batteries`, `…/remove`, `…/replace`, `…/relocate` | installation.create, or installation.record on a visit you are assigned to that covers the bank |
+| Visits | `GET /visits[/{id}]`, `/installation/technicians`, `/projects/{id}/installation`; `POST /visits`, `PATCH /visits/{id}`, `POST …/{id}/cancel` | installation.view; installation.create |
+| Visit work | `PUT /visits/{id}/record`, `POST …/{id}/complete`, `POST …/{id}/issues/{n}/close`, `POST …/{id}/files` (multipart, up to `MAX_UPLOAD_MB`) | installation.record on your own visit, or installation.create |
+| Evidence | `GET /files/{id}` | installation.view |
+| Stage checks | `GET /stage-checks`; `POST /stage-checks`, `PUT /stage-checks/{id}` | installation.view or .configure; installation.configure |
+| Traceability | `GET /trace/scan?code=` (label address, token, serial or supplier serial), `/serials/{id}/timeline`, `/serial-labels?ids=` (≤100, QR as SVG) | stock.view |
+| Public check | `GET /public/verify/{token}`: serial, product, in service or not | none; 30 per minute per address |
+
+Completing a visit answers 422 with `detail.missing` (a list in words) when something SMET requires
+is not recorded yet; the same list is on `GET /visits/{id}` as `missing`.
