@@ -194,8 +194,12 @@ def test_a_bank_goes_from_delivery_to_handover_one_stage_at_a_time(site):
         f"{API}/visits/{early['id']}/complete", json={"version": early["version"], "done_on": TODAY}
     )
     assert r.status_code == 422 and "Open issues" in r.text
-    early = ok(tech.put(f"{API}/visits/{early['id']}/record", json={"version": early["version"], "issues": [{"text": "Label missing", "action": "Fitted", "status": "closed"}],
-               "acknowledgement": {"name": "Eng. Saeed", "role": "Site engineer", "on": TODAY}}))  # fmt: skip
+    early = ok(
+        tech.post(
+            f"{API}/visits/{early['id']}/issues/0/close",
+            json={"version": early["version"], "action": "Fitted"},
+        )
+    )
     ok(
         tech.post(
             f"{API}/visits/{early['id']}/complete",

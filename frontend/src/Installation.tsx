@@ -86,7 +86,7 @@ export function VisitPage() {
   const can = useCan()
   const when = useWhen()
   const { data: v, error, reload } = useApi<Visit>(`/visits/${id}`)
-  const [dialog, setDialog] = useState<'plan' | 'cancel' | { place: BankBrief } | null>(null)
+  const [dialog, setDialog] = useState<'plan' | 'cancel' | { place: BankBrief } | { bank: BankBrief; change: Change } | null>(null)
   const action = useAction(() => { setDialog(null); reload() })
   if (error) return <PageState kind="error" title="Couldn't load the visit" message={error} />
   if (!v) return <PageState kind="loading" title="Loading…" />
@@ -112,24 +112,26 @@ export function VisitPage() {
         <section key={b.id} className="panel panel-wide">
           <div className="panel-head">
             <h2><Link to={`/installation/banks/${b.id}`}>{b.number}</Link> {b.name} <Status s={b.status} /></h2>
-            {v.can_record && <button className="btn btn-secondary" onClick={() => setDialog({ place: b })}>Place batteries</button>}
+            {v.can_record && b.status === 'planned' && <button className="btn btn-secondary" onClick={() => setDialog({ place: b })}>Place batteries</button>}
           </div>
           {b.configuration && <p className="muted">{b.configuration}</p>}
           {b.positions.length === 0 ? <p className="empty-line">No batteries placed yet.</p> : (
             <div className="table-wrap"><table className="table">
-              <thead><tr><th scope="col">Position</th><th scope="col">Serial</th><th scope="col">Item</th>{v.stage === 'installation' && <th scope="col">Receipt confirmed</th>}</tr></thead>
+              <thead><tr><th scope="col">Position</th><th scope="col">Serial</th><th scope="col">Item</th>{v.stage === 'installation' && <th scope="col">Receipt confirmed</th>}{v.can_record && <th scope="col"><span className="sr-only">Actions</span></th>}</tr></thead>
               <tbody>{b.positions.map((x) => (
                 <tr key={x.serial}><td>{x.position}</td><td><Link to={`/stock/serials/${x.serial_id}`}><code>{x.serial}</code></Link></td><td className="small">{x.item.code}</td>
-                  {v.stage === 'installation' && <td>{v.received_serials.includes(x.serial) ? '✓' : <span className="muted">Not yet</span>}</td>}</tr>
+                  {v.stage === 'installation' && <td>{v.received_serials.includes(x.serial) ? '✓' : <span className="muted">Not yet</span>}</td>}
+                  {v.can_record && <td className="actions"><span className="row">{(['replace', 'relocate', 'remove'] as const).map((k) => (
+                    <button key={k} className="link-btn" onClick={() => setDialog({ bank: b, change: { kind: k, pos: x } })}>{k === 'relocate' ? 'Move' : words(k)}</button>))}</span></td>}</tr>
               ))}</tbody>
             </table></div>
           )}
         </section>
       ))}
 
-      {v.can_record ? <RecordForm key={v.version} v={v} onSaved={reload} /> : <VisitRecord v={v} />}
+      {v.can_record ? <RecordForm v={v} onSaved={reload} /> : <VisitRecord v={v} />}
       <Evidence v={v} onDone={reload} />
-      {!open && v.issues.some((i) => i.status === 'open') && (can('installation.create') || can('installation.record')) && <CloseIssues v={v} onDone={reload} />}
+      {v.issues.some((i) => i.status === 'open') && (v.can_record || (!open && (can('installation.create') || can('installation.record')))) && <CloseIssues v={v} onDone={reload} />}
       {coord && open && <p><button className="btn btn-ghost" onClick={() => setDialog('cancel')}>Cancel visit</button></p>}
 
       {dialog === 'cancel' && (
@@ -143,7 +145,9 @@ export function VisitPage() {
         </Dialog>
       )}
       {dialog === 'plan' && <Dialog wide title={`Plan ${v.number}`} onClose={() => setDialog(null)}><VisitForm site={v.site} visit={v} onDone={() => { setDialog(null); reload() }} /></Dialog>}
-      {dialog && typeof dialog === 'object' && <Dialog wide title={`Place batteries in ${dialog.place.number}`} onClose={() => setDialog(null)}>
+      {dialog && typeof dialog === 'object' && 'change' in dialog && <Dialog title={`${dialog.change.kind === 'relocate' ? 'Move' : words(dialog.change.kind)} ${dialog.change.pos.serial}`} onClose={() => setDialog(null)}>
+        <ChangeForm bank={dialog.bank} change={dialog.change} banks={v.banks} visitId={v.id} onDone={() => { setDialog(null); reload() }} /></Dialog>}
+      {dialog && typeof dialog === 'object' && 'place' in dialog && <Dialog wide title={`Place batteries in ${dialog.place.number}`} onClose={() => setDialog(null)}>
         <PlaceForm bank={dialog.place} siteId={v.site.id} visitId={v.id} taken={v.banks.find((b) => b.id === dialog.place.id)?.positions.length ?? 0} onDone={() => { setDialog(null); reload() }} /></Dialog>}
     </>
   )
@@ -157,7 +161,8 @@ function RecordForm({ v, onSaved }: { v: Visit; onSaved: () => void }) {
   const [checks, setChecks] = useState<Record<string, { done: boolean; note: string }>>(
     Object.fromEntries(v.checks.filter((c) => c.kind === 'check').map((c) => [c.id, { done: done[c.id]?.done ?? false, note: done[c.id]?.note ?? '' }])))
   const [readings, setReadings] = useState<Record<string, string>>(Object.fromEntries(v.checks.filter((c) => c.kind === 'reading').map((c) => [c.id, taken[c.id] ?? ''])))
-  const [issues, setIssues] = useState<Issue[]>(v.issues)
+  const [edits, setEdits] = useState<Record<number, { text: string; action: string }>>({})
+  const [added, setAdded] = useState<{ text: string; action: string }[]>([])
   const [ready, setReady] = useState(v.site_ready == null ? '' : v.site_ready ? 'yes' : 'no')
   const [doneOn, setDoneOn] = useState(today())
   const action = useAction(onSaved)
@@ -170,11 +175,25 @@ function RecordForm({ v, onSaved }: { v: Visit; onSaved: () => void }) {
       site_ready: ready === '' ? null : ready === 'yes',
       checklist: Object.entries(checks).map(([check_id, c]) => ({ check_id, ...c })),
       readings: Object.entries(readings).filter(([, x]) => x !== '').map(([check_id, x]) => ({ check_id, value: num(x) })),
-      issues: issues.filter((i) => i.text.trim()),
+      issues: [...v.issues.map((x, i) => edits[i] ?? { text: x.text, action: x.action }), ...added.filter((i) => i.text.trim())],
       acknowledgement: { name: fd.get('ack_name') ?? '', role: fd.get('ack_role') ?? '', on: fd.get('ack_on') || null, note: fd.get('ack_note') ?? '' },
     }
   }
-  const save = () => api<Visit>(`/visits/${v.id}/record`, { method: 'PUT', body: body() })
+  const save = async () => {
+    const saved = await api<Visit>(`/visits/${v.id}/record`, { method: 'PUT', body: body() })
+    setEdits({})
+    setAdded([])
+    return saved
+  }
+  /** The save stands even if completion is refused, so the page reloads either way (fresh version and list). */
+  const saveAndComplete = async () => {
+    const saved = await save()
+    try {
+      await api(`/visits/${v.id}/complete`, { method: 'POST', body: { version: saved.version, done_on: doneOn } })
+    } finally {
+      onSaved()
+    }
+  }
   const reading = (c: Check) => {
     const x = num(readings[c.id])
     if (x === undefined || !c.confirmed) return null
@@ -223,15 +242,25 @@ function RecordForm({ v, onSaved }: { v: Visit; onSaved: () => void }) {
         </section>
       )}
       <section className="panel panel-wide">
-        <div className="panel-head"><h2>Issues and outstanding work</h2><button type="button" className="btn btn-ghost" onClick={() => setIssues([...issues, { text: '', action: '', status: 'open' }])}><Plus size={16} aria-hidden /> Add issue</button></div>
-        {issues.length === 0 ? <p className="empty-line">None found.</p> : issues.map((i, n) => (
-          <div className="line" key={n}>
-            <label className="line-item"><span className="line-label">Issue</span><input value={i.text} maxLength={500} onChange={(e) => setIssues(issues.map((x, k) => (k === n ? { ...x, text: e.target.value } : x)))} /></label>
-            <label className="line-item"><span className="line-label">Corrective action</span><input value={i.action} maxLength={500} onChange={(e) => setIssues(issues.map((x, k) => (k === n ? { ...x, action: e.target.value } : x)))} /></label>
-            <label style={{ inlineSize: 130 }}><span className="line-label">Status</span><select value={i.status} onChange={(e) => setIssues(issues.map((x, k) => (k === n ? { ...x, status: e.target.value as Issue['status'] } : x)))}><option value="open">Open</option><option value="closed">Closed</option></select></label>
-            <button type="button" className="btn btn-ghost" aria-label={`Remove issue ${n + 1}`} onClick={() => setIssues(issues.filter((_, k) => k !== n))}><Trash2 size={16} aria-hidden /></button>
-          </div>
-        ))}
+        <div className="panel-head"><h2>Issues and outstanding work</h2><button type="button" className="btn btn-ghost" onClick={() => setAdded([...added, { text: '', action: '' }])}><Plus size={16} aria-hidden /> Add issue</button></div>
+        {v.issues.length + added.length === 0 ? <p className="empty-line">None found.</p> : <>
+          {v.issues.map((x, n) => x.status === 'closed'
+            ? <p key={n} className="line small"><span className="line-item">{x.text}</span><span className="line-item muted">Closed: {x.action}{x.closed_by && ` (${x.closed_by})`}</span></p>
+            : (
+              <div className="line" key={n}>
+                <label className="line-item"><span className="line-label">Issue</span><input value={(edits[n] ?? x).text} maxLength={500} onChange={(e) => setEdits({ ...edits, [n]: { ...(edits[n] ?? x), text: e.target.value } })} /></label>
+                <label className="line-item"><span className="line-label">Corrective action</span><input value={(edits[n] ?? x).action} maxLength={500} onChange={(e) => setEdits({ ...edits, [n]: { ...(edits[n] ?? x), action: e.target.value } })} /></label>
+              </div>
+            ))}
+          {added.map((x, n) => (
+            <div className="line" key={`new-${n}`}>
+              <label className="line-item"><span className="line-label">New issue</span><input value={x.text} maxLength={500} onChange={(e) => setAdded(added.map((y, k) => (k === n ? { ...y, text: e.target.value } : y)))} /></label>
+              <label className="line-item"><span className="line-label">Corrective action</span><input value={x.action} maxLength={500} onChange={(e) => setAdded(added.map((y, k) => (k === n ? { ...y, action: e.target.value } : y)))} /></label>
+              <button type="button" className="btn btn-ghost" aria-label={`Remove new issue ${n + 1}`} onClick={() => setAdded(added.filter((_, k) => k !== n))}><Trash2 size={16} aria-hidden /></button>
+            </div>
+          ))}
+          <p className="hint">Issues stay on record. Close one under Outstanding work when it is fixed.</p>
+        </>}
         <TextareaField label="Observations" name="observations" defaultValue={v.observations} maxLength={2000} rows={3} />
       </section>
       {v.stage === 'handover' && (
@@ -257,17 +286,11 @@ function RecordForm({ v, onSaved }: { v: Visit; onSaved: () => void }) {
             : <p className="muted">Everything SMET requires is recorded. Completing sets the {v.stage} date on {v.banks.map((b) => b.number).join(', ')}.</p>}
           <div className="row">
             <Field label="Done on" type="date" value={doneOn} max={today()} onChange={(e) => setDoneOn(e.target.value)} />
-            <button type="button" className="btn btn-primary" disabled={!!action.busy} onClick={() => action.run('complete', async () => {
-              const saved = await save()
-              await api(`/visits/${v.id}/complete`, { method: 'POST', body: { version: saved.version, done_on: doneOn } })
-            }, `Complete the ${v.stage} of ${v.banks.map((b) => b.number).join(', ')}?`)}>Save and complete</button>
+            <button type="button" className="btn btn-primary" disabled={!!action.busy} onClick={() => action.run('complete', () => saveAndComplete(), `Complete the ${v.stage} of ${v.banks.map((b) => b.number).join(', ')}?`)}>Save and complete</button>
           </div>
         </section>
       )}
-      {v.stage === 'other' && <p><button type="button" className="btn btn-primary" disabled={!!action.busy} onClick={() => action.run('complete', async () => {
-        const saved = await save()
-        await api(`/visits/${v.id}/complete`, { method: 'POST', body: { version: saved.version, done_on: doneOn } })
-      })}>Save and mark done</button></p>}
+      {v.stage === 'other' && <p><button type="button" className="btn btn-primary" disabled={!!action.busy} onClick={() => action.run('complete', () => saveAndComplete())}>Save and mark done</button></p>}
     </form>
   )
 }
@@ -548,7 +571,7 @@ export function BankPage() {
       <PageHead title={`${b.number} · ${b.name}`} intro={`${b.site.name} · ${b.site.customer.name}${b.configuration ? ` · ${b.configuration}` : ''}`}>
         {b.positions.length > 0 && <Link className="btn btn-secondary" target="_blank" to={`/print/labels?ids=${b.positions.map((p) => p.serial_id).join(',')}`}>Print labels</Link>}
         {coord && <button className="btn btn-secondary" onClick={() => setDialog('edit')}>Edit</button>}
-        {coord && <button className="btn btn-primary" onClick={() => setDialog('add')}>Add batteries</button>}
+        {coord && b.status === 'planned' && <button className="btn btn-primary" onClick={() => setDialog('add')}>Add batteries</button>}
       </PageHead>
       <Facts rows={[['Stage', <Status s={b.status} />], ['Installed', day(b.installed_on)], ['Commissioned', day(b.commissioned_on)], ['Handed over', day(b.handed_over_on)], ['Batteries', String(b.positions.length)]]} />
       <FormError message={action.error} />
@@ -588,31 +611,36 @@ export function BankPage() {
           </form>
         </Dialog>
       )}
-      {change && (
-        <Dialog title={`${words(change.kind === 'relocate' ? 'move' : change.kind)} ${change.pos.serial}`} onClose={() => setDialog(null)}>
-          <form noValidate onSubmit={(e) => {
-            e.preventDefault()
-            const fd = new FormData(e.currentTarget)
-            const body: Record<string, unknown> = { version: b.version, serial: change.pos.serial, reason: fd.get('reason') }
-            if (change.kind === 'replace') body.new_serial = String(fd.get('new_serial') ?? '').trim().toUpperCase()
-            if (change.kind === 'relocate') Object.assign(body, { to_bank_id: fd.get('to_bank_id'), position: fd.get('position') })
-            void action.run(change.kind, () => api(`/banks/${b.id}/${change.kind}`, { method: 'POST', body }))
-          }}>
-            <p className="hint">{change.kind === 'remove' ? 'The battery stays at the site, out of the bank, until it is returned or placed again.'
-              : change.kind === 'replace' ? `The new battery takes position ${change.pos.position}. It must have been delivered to this site.`
-              : 'To another position here, or to another bank of the same customer.'}</p>
-            {change.kind === 'replace' && <Field label="New battery's serial" name="new_serial" required maxLength={60} autoComplete="off" />}
-            {change.kind === 'relocate' && <>
-              <SelectField label="To bank" name="to_bank_id" defaultValue={b.id} options={(others.data?.banks ?? [b]).map((x) => [x.id, `${x.number} ${x.name}`])} />
-              <Field label="Position" name="position" required maxLength={40} />
-            </>}
-            <TextareaField label="Reason" name="reason" required minLength={3} maxLength={500} />
-            <FormError message={action.error} />
-            <button className="btn btn-primary" disabled={!!action.busy}>{words(change.kind === 'relocate' ? 'move' : change.kind)}</button>
-          </form>
-        </Dialog>
-      )}
+      {change && <Dialog title={`${words(change.kind === 'relocate' ? 'move' : change.kind)} ${change.pos.serial}`} onClose={() => setDialog(null)}>
+        <ChangeForm bank={b} change={change} banks={others.data?.banks ?? [b]} onDone={() => { setDialog(null); reload() }} /></Dialog>}
     </>
+  )
+}
+
+/** Remove, replace or move one battery; on a visit, the visit is recorded with it. */
+function ChangeForm({ bank, change, banks, visitId, onDone }: { bank: BankBrief; change: Change; banks: BankBrief[]; visitId?: string; onDone: () => void }) {
+  const action = useAction(onDone)
+  return (
+    <form noValidate onSubmit={(e) => {
+      e.preventDefault()
+      const fd = new FormData(e.currentTarget)
+      const body: Record<string, unknown> = { version: bank.version, visit_id: visitId ?? null, serial: change.pos.serial, reason: fd.get('reason') }
+      if (change.kind === 'replace') body.new_serial = String(fd.get('new_serial') ?? '').trim().toUpperCase()
+      if (change.kind === 'relocate') Object.assign(body, { to_bank_id: fd.get('to_bank_id'), position: fd.get('position') })
+      void action.run(change.kind, () => api(`/banks/${bank.id}/${change.kind}`, { method: 'POST', body }))
+    }}>
+      <p className="hint">{change.kind === 'remove' ? 'The battery stays at the site, out of the bank, until it is returned or placed again.'
+        : change.kind === 'replace' ? `The new battery takes position ${change.pos.position}. It must have been delivered to this site.${bank.status !== 'planned' ? ' This bank is in use, so record the replacement on a visit with its readings and photographs.' : ''}`
+        : 'To another position here, or to another bank of the same customer at the same stage.'}</p>
+      {change.kind === 'replace' && <Field label="New battery's serial" name="new_serial" required maxLength={60} autoComplete="off" />}
+      {change.kind === 'relocate' && <>
+        <SelectField label="To bank" name="to_bank_id" defaultValue={bank.id} options={banks.map((x) => [x.id, `${x.number} ${x.name}`])} />
+        <Field label="Position" name="position" required maxLength={40} />
+      </>}
+      <TextareaField label="Reason" name="reason" required minLength={3} maxLength={500} />
+      <FormError message={action.error} />
+      <button className="btn btn-primary" disabled={!!action.busy}>{words(change.kind === 'relocate' ? 'move' : change.kind)}</button>
+    </form>
   )
 }
 
@@ -768,7 +796,8 @@ export function VerifyPage({ token }: { token: string }) {
   useEffect(() => {
     fetch(`/api/v1/public/verify/${encodeURIComponent(token)}`).then(async (r) => setState(r.ok ? await r.json() : r.status === 404 ? 'missing' : 'error')).catch(() => setState('error'))
   }, [token])
-  const STATUS: Record<string, string> = { in_service: 'Installed and in service', not_in_service: 'Not yet installed', withdrawn: 'Withdrawn from use' }
+  const STATUS: Record<string, string> = { in_service: 'Installed and in service', installed: 'Installed, not yet commissioned', removed: 'Taken out of service',
+    not_in_service: 'Not yet installed', withdrawn: 'Withdrawn from use' }
   return (
     <main className="verify">
       <p className="brand"><Logo /> SMET</p>

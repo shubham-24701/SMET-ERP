@@ -61,7 +61,7 @@ test('batteries delivered to a site are installed, commissioned and traced to a 
   await page.getByRole('button', { name: 'Schedule visit' }).click()
   d = page.getByRole('dialog')
   await d.getByRole('checkbox', { name: /Bank 1/ }).check()
-  await d.getByRole('checkbox', { name: 'Chen Checker' }).check()
+  for (const c of await d.getByRole('checkbox', { name: 'Chen Checker' }).all()) await c.check() // earlier journeys add their own Chen
   await d.getByLabel('Site contact').fill('Omar')
   await d.getByLabel('Access requirements').fill('Gate pass from the landlord')
   await d.getByRole('button', { name: 'Schedule visit' }).click()
@@ -80,6 +80,9 @@ test('batteries delivered to a site are installed, commissioned and traced to a 
   await chen.getByRole('checkbox', { name: `Terminals torqued ${s}` }).check()
   await chen.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(chen.getByText('Photographs: 0 of 1')).toBeVisible()
+  chen.once('dialog', (x) => x.accept())
+  await chen.getByRole('button', { name: 'Save and complete' }).click()
+  await expect(chen.getByText(/Not ready to complete: Photographs: 0 of 1/)).toBeVisible() // refused, and the form still works after
   await chen.getByLabel('File').setInputFiles({ name: 'rack.jpg', mimeType: 'image/jpeg', buffer: JPEG })
   await chen.getByLabel('Caption').fill('Rack after installation')
   await chen.getByRole('button', { name: 'Add', exact: true }).click()

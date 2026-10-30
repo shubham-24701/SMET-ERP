@@ -51,14 +51,18 @@ MOVE_WORDS = {
     "supplier_return": "Returned to the supplier", "dispatch": "Dispatched to the customer",
     "dispatch_cancel": "Dispatch cancelled; back in stock", "customer_return": "Refused at delivery; back in returns",
     "adjust_in": "Stock correction (in)", "adjust_out": "Stock correction (out)",
+    "accept": "Accepted at receiving inspection", "reject": "Rejected at receiving inspection",
+    "hold": "Put on hold at receiving inspection", "passed": "Passed inspection",
+    "on_hold": "Put on hold at final inspection", "rework": "Sent to rework",
 }  # fmt: skip
 STAGE_WORDS = {
     "installation": "Installed",
     "commissioning": "Commissioned",
     "handover": "Handed over to the customer",
 }
-PUBLIC_STATUS = {"installed": "in_service", "commissioned": "in_service", "in_service": "in_service",
-                 "written_off": "withdrawn", "rejected": "withdrawn", "returned_to_supplier": "withdrawn"}  # fmt: skip
+PUBLIC_STATUS = {"installed": "installed", "commissioned": "in_service", "in_service": "in_service",
+                 "removed": "removed", "written_off": "withdrawn", "rejected": "withdrawn",
+                 "returned_to_supplier": "withdrawn"}  # fmt: skip
 
 
 def qr_url(s: Serial) -> str:

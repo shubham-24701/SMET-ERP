@@ -9,7 +9,7 @@ prompt (§28), which are supplementary and not part of the original list.
 
 | # | Checkpoint | Status at end of Phase 1 |
 | --- | --- | --- |
-| 1 | Rate Limiting | Pass for sign-in and password change; public verification in P6 |
+| 1 | Rate Limiting | Pass for sign-in, password change and the public QR check (30 per minute per address) |
 | 4 | Reverse Proxies | Host allow-list passes; proxy hardening in P8, including trusting only the proxy's address for client IPs (until then, clients behind a proxy share one rate-limit bucket) |
 | 11 | Timeouts | Database statement and connect timeouts pass |
 | 14 | Idempotency | Pass for setup, jobs and every stock-changing operation (operation keys) |
@@ -48,7 +48,7 @@ prompt (§28), which are supplementary and not part of the original list.
 | Object-level authorization / IDOR | Staff records are company-wide by design (one company); every route checks its permission (route matrix). Party scoping arrives with the portals (P6) | `test_security_matrix.py` |
 | Approval separation | Purchase orders, stock corrections, quotations, requirement sheets and project changes can't be approved by anyone who prepared, changed or submitted them (configurable for orders, corrections and quotations; off) | `test_the_whole_purchase_journey…`, `test_corrections_need_a_second_person…` |
 | Audit integrity | Audit log and stock ledger append-only at database level, for the app and the owner | `test_platform.py`, `test_the_ledger_cannot_be_rewritten_by_the_app` |
-| File uploads | Not built (P7): type sniffing, size limits, storage outside the web root, permission-checked downloads | — |
+| File uploads | Pass for visit evidence: type read from the content (JPEG, PNG, WebP, PDF only), 10 MB limit enforced while the body arrives, names stripped of paths, stored outside the web root under a random name with SHA-256, downloads need a permission and are sent with `nosniff` and a strict CSP; PDFs download rather than open | `test_evidence_files_are_checked_by_content_and_kept_safely` |
 | Formula injection | Sizing rules run through an AST whitelist (numbers, inputs, arithmetic, five functions); everything else is refused before it is stored or run | `test_formulas_are_arithmetic_only` |
 | Public endpoint data minimisation | Health only in P1; verification portal returns approved fields only (P6) | — |
 | Dependency review | pip-audit and npm audit clean; run in CI | TEST_RESULTS.md |
@@ -56,3 +56,12 @@ prompt (§28), which are supplementary and not part of the original list.
 
 An independent code review (2026-10-28) found 12 defects; 11 are fixed with regression tests, one
 (proxy client addresses) waits for hosting. See docs/TEST_RESULTS.md. No penetration test has been performed. "Pass" above means the named automated test passed.
+
+### Phase 5 additions
+
+| Topic | Status | Evidence |
+| --- | --- | --- |
+| QR payload | Only `<public address>/v/<random 32-hex token>`: no customer, site, internal id or secret; tokens can't be derived from serial numbers | `test_qr_labels_lead_to_a_public_check_that_reveals_nothing_private` |
+| Public check | No sign-in; shows serial, product and an in-service status only; unknown or malformed tokens get the same 404; 30 per minute per address | same, `test_the_public_check_tells_installed…` |
+| Field work | A technician records only visits they are assigned to, and changes only banks their visit covers | `test_a_bank_goes_from_delivery_to_handover…`, `test_a_technician_moves_batteries_only_into_banks_their_visit_covers` |
+| History | Bank placements, visits, banks and file records can't be deleted by the app login; file records can't be changed (migration 0007) | migration 0007, privilege check in TEST_RESULTS.md |

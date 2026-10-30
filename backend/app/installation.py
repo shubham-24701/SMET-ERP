@@ -42,6 +42,11 @@ from app.models import (
 from app.projects import _names
 from app.sales import party_ref
 
+
+def words(status_: str) -> str:
+    return status_.replace("_", " ")
+
+
 router = APIRouter(tags=["installation"], route_class=NumbersRoute)
 Text = Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000)]
 Short = Annotated[str, StringConstraints(strip_whitespace=True, max_length=160)]
@@ -383,6 +388,7 @@ def update_bank(
     b = get_or_404(db, BatteryBank, bank_id, "Battery bank", lock=True)
     if b.version != body.version:
         raise stale()
+    get_or_404(db, Site, b.site_id, "Site", lock=True)  # one rename per site at a time
     _bank_name_free(db, b.site_id, body.name, b.id)
     changes = {
         k: [getattr(b, k), v]
@@ -500,6 +506,10 @@ def _place(
 @router.post("/banks/{bank_id}/batteries")
 def add_batteries(bank_id: uuid.UUID, body: AddIn, p: Worker, db: DB) -> dict:
     b, v = _bank_for_change(db, p, bank_id, body.version, body.visit_id)
+    if b.status != "planned":
+        raise conflict(
+            f"{b.number} is {words(b.status)}: a battery joins it only as a replacement, recorded on a visit"
+        )
     serials = [x.serial for x in body.batteries]
     positions = [x.position for x in body.batteries]
     if len(set(serials)) != len(serials) or len(set(positions)) != len(positions):
@@ -533,6 +543,11 @@ def replace_battery(bank_id: uuid.UUID, body: ReplaceIn, p: Worker, db: DB) -> d
     """The old battery leaves its position, the new one takes it; each keeps its own history and
     the new placement names the battery it replaces."""
     b, v = _bank_for_change(db, p, bank_id, body.version, body.visit_id)
+    if b.status != "planned" and v is None:
+        raise field_error(
+            "visit_id",
+            f"{b.number} is {words(b.status)}: record the replacement on a visit, with its readings and photographs",
+        )
     bp, old = _current(db, b.id, body.serial)
     new = _site_battery(db, body.new_serial, b.site_id, "new_serial")
     _end(bp, p, "replaced", body.reason)
@@ -548,7 +563,10 @@ def replace_battery(bank_id: uuid.UUID, body: ReplaceIn, p: Worker, db: DB) -> d
 
 @router.post("/banks/{bank_id}/relocate")
 def relocate_battery(bank_id: uuid.UUID, body: RelocateIn, p: Worker, db: DB) -> dict:
-    """To another position or bank of the same customer (another site of theirs included)."""
+    """To another position, or to a bank at the same stage of the same customer (another site of
+    theirs included). Both banks are locked in id order, so two opposite moves can't deadlock."""
+    db.execute(select(BatteryBank.id).where(BatteryBank.id.in_([bank_id, body.to_bank_id]))
+               .order_by(BatteryBank.id).with_for_update())  # fmt: skip
     b, v = _bank_for_change(db, p, bank_id, body.version, body.visit_id)
     bp, s = _current(db, b.id, body.serial)
     to = (
@@ -557,9 +575,12 @@ def relocate_battery(bank_id: uuid.UUID, body: RelocateIn, p: Worker, db: DB) ->
         else get_or_404(db, BatteryBank, body.to_bank_id, "Battery bank", lock=True)
     )
     if to.id != b.id:
-        if v is None and not p.can("installation.create"):
-            raise HTTPException(
-                status.HTTP_403_FORBIDDEN, "Moving a battery to another bank needs a coordinator"
+        if v is not None and to.id not in v.bank_ids:
+            raise field_error("to_bank_id", "This visit doesn't cover that bank")
+        if to.status != b.status:
+            raise conflict(
+                f"{to.number} is {words(to.status)} and {b.number} is {words(b.status)}: "
+                "batteries move only between banks at the same stage"
             )
         cust = lambda bank: db.get(Project, db.get(Site, bank.site_id).project_id).customer_id  # noqa: E731
         if cust(to) != cust(b):
@@ -769,9 +790,11 @@ class Reading(BaseModel):
 
 
 class Issue(BaseModel):
+    """Issues are listed in their saved order; new ones go at the end. Saving can reword an open
+    issue, never drop or close one: closing is its own action, with what was done."""
+
     text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
     action: Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)] = ""
-    status: Literal["open", "closed"] = "open"
 
 
 class Ack(BaseModel):
@@ -833,7 +856,11 @@ def record_work(visit_id: uuid.UUID, body: RecordIn, p: Worker, db: DB) -> dict:
                    "min": str(c.min_value) if c.min_value is not None else None,
                    "max": str(c.max_value) if c.max_value is not None else None,
                    "confirmed": c.confirmed, "within": _within(c, r.value)} for r in body.readings]  # fmt: skip
-    v.observations, v.issues = body.observations, [i.model_dump() for i in body.issues]
+    if len(body.issues) < len(v.issues):
+        raise field_error("issues", "Issues can't be deleted; close them with what was done")
+    v.issues = [dict(old) | (i.model_dump() if old["status"] == "open" else {}) for old, i in zip(v.issues, body.issues, strict=False)] + [
+        i.model_dump() | {"status": "open"} for i in body.issues[len(v.issues):]]  # fmt: skip
+    v.observations = body.observations
     v.acknowledgement = body.acknowledgement.model_dump(mode="json")
     if "site_ready" in body.model_fields_set:
         v.site_ready = body.site_ready
