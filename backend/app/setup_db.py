@@ -70,7 +70,8 @@ def setup(admin_url: str, host: str, port: int) -> dict[str, str]:
                 sql.Identifier(APP)))  # fmt: skip
             # ...except where the migrations take rights away again: history and the schema record.
             for table, rights in (("audit_events", "UPDATE, DELETE, TRUNCATE"),
-                                  ("alembic_version", "INSERT, UPDATE, DELETE, TRUNCATE")):  # fmt: skip
+                                  ("alembic_version", "INSERT, UPDATE, DELETE, TRUNCATE"),
+                                  ("stock_moves", "UPDATE, DELETE, TRUNCATE")):  # fmt: skip
                 if conn.execute("SELECT to_regclass(%s)", (f"public.{table}",)).fetchone()[0]:
                     conn.execute(sql.SQL("REVOKE " + rights + " ON {} FROM {}").format(
                         sql.Identifier(table), sql.Identifier(APP)))  # fmt: skip

@@ -22,7 +22,8 @@ def test_all_role_templates_ship(admin):
 def test_admin_holds_no_business_permissions():
     # System Administrator configures; it never approves, adjusts stock or changes warranties.
     business = [p for p in rbac.TEMPLATES["system_admin"][3] if p.split(".")[0] not in
-                {"users", "roles", "audit", "settings", "system"}]  # fmt: skip
+                {"users", "roles", "audit", "settings", "system"}
+                and p.split(".")[1] not in ("configure", "view")]  # fmt: skip
     assert business == []
 
 
@@ -188,7 +189,7 @@ def test_nobody_hands_out_powers_they_dont_hold(admin, user_with):
     r = helpdesk.post(
         f"{API}/users", json={"name": "Puppet", "email": "p@example.test", "role_ids": [sa]}
     )
-    assert r.status_code == 403 and "roles.configure" in r.text
+    assert r.status_code == 403 and "configure, which you don't hold" in r.text
     # Business roles are fine: giving them is what user administration is for.
     sales = role_id(helpdesk, "Sales Officer")
     ok = helpdesk.post(

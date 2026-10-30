@@ -25,9 +25,43 @@ PERMISSIONS: dict[str, tuple[str, str]] = {
     "settings.view": ("Company settings", "See company settings"),
     "settings.configure": ("Company settings", "Change company name, time zone and currency"),
     "system.view": ("System health", "See system health and background jobs"),
-}
+    # Phase 2
+    "items.view": ("Items", "See items, battery models, specifications and units"),
+    "items.edit": ("Items", "Add and change items and their specifications"),
+    "items.configure": ("Items", "Manage units of measure"),
+    "parties.view": ("Suppliers & customers", "See suppliers, customers, distributors and dealers"),
+    "parties.edit": ("Suppliers & customers", "Add and change them, their contacts, terms and supplied items"),
+    "warehouses.view": ("Warehouses", "See warehouses and storage locations"),
+    "warehouses.configure": ("Warehouses", "Add and change warehouses and storage locations"),
+    "purchasing.view": ("Purchasing", "See purchase requests, supplier quotations, purchase orders, receipts and returns"),
+    "purchasing.create": ("Purchasing", "Raise purchase requests, record quotations, draft and submit purchase orders, return goods to suppliers"),
+    "purchasing.approve": ("Purchasing", "Approve or reject submitted purchase orders"),
+    "receipts.create": ("Goods receipt", "Record deliveries against purchase orders"),
+    "stock.view": ("Stock", "See stock, movements, reservations, counts and serial numbers"),
+    "stock.create": ("Stock", "Move stock between locations, reserve and release stock, run stock counts"),
+    "stock.export": ("Stock", "Download stock and movement reports as CSV"),
+    "adjustments.create": ("Stock corrections", "Request stock corrections"),
+    "adjustments.approve": ("Stock corrections", "Approve or reject stock corrections, which changes stock"),
+    # Phase 3
+    "bom.view": ("Bills of materials", "See bills of materials"),
+    "bom.configure": ("Bills of materials", "Create bill of materials versions and make them active"),
+    "assembly.view": ("Assembly", "See assembly orders and work in progress"),
+    "assembly.create": ("Assembly", "Plan, release, complete and cancel assembly orders"),
+    "assembly.edit": ("Assembly", "Issue and return materials, build batteries and record what went into them"),
+    "quality.create": ("Quality", "Decide on received goods and inspect finished batteries (pass, hold, rework)"),
+    "quality.configure": ("Quality", "Set test parameters, limits and inspection checklists"),
+}  # fmt: skip
 
-ADMIN_PERMS = list(PERMISSIONS)
+CONFIGURE_PERMS = [p for p in PERMISSIONS if p.endswith(".configure")]
+ADMIN_PERMS = [
+    p for p in PERMISSIONS if p.split(".")[0] in ("users", "roles", "audit", "settings", "system")
+]
+# The administrator also holds every .configure permission: it can then grant them (the escalation
+# guard) and set up master data, but still approves, moves or inspects nothing.
+ADMIN_PERMS = list(
+    dict.fromkeys(ADMIN_PERMS + CONFIGURE_PERMS + ["items.view", "warehouses.view", "bom.view"])
+)
+VIEW_ALL = [p for p in PERMISSIONS if p.endswith(".view")]
 
 
 def is_guarded(perm: str) -> bool:
@@ -37,24 +71,34 @@ def is_guarded(perm: str) -> bool:
     return module in ("users", "roles") or action in ("configure", "sensitive")
 
 
-OVERSIGHT = ["users.view", "roles.view", "audit.view", "settings.view", "system.view"]
+OVERSIGHT = VIEW_ALL + ["stock.export"]
 
 # key -> (name, audience, description, permissions). Business permissions arrive with each phase.
 TEMPLATES: dict[str, tuple[str, str, str, list[str]]] = {
     "system_admin": ("System Administrator", "internal",
         "Users, roles, settings and technical configuration. No business approvals.", ADMIN_PERMS),
     "operations_manager": ("Management / Operations Manager", "internal",
-        "Dashboards and visibility across all modules, plus specifically granted approvals.", OVERSIGHT),
+        "Dashboards and visibility across all modules, plus specifically granted approvals.",
+        OVERSIGHT + ["adjustments.approve", "assembly.create", "bom.configure"]),
     "procurement_officer": ("Procurement Officer", "internal",
-        "Suppliers, purchase requests, supplier quotations, purchase orders and receipt tracking.", []),
+        "Suppliers, purchase requests, supplier quotations, purchase orders and receipt tracking.",
+        ["items.view", "items.edit", "parties.view", "parties.edit", "purchasing.view",
+         "purchasing.create", "stock.view", "warehouses.view"]),
     "procurement_approver": ("Procurement Approver", "internal",
-        "Approves or rejects purchase orders, with reasons.", []),
+        "Approves or rejects purchase orders, with reasons.",
+        ["items.view", "parties.view", "purchasing.view", "purchasing.approve", "stock.view"]),
     "warehouse_officer": ("Warehouse / Inventory Officer", "internal",
-        "Receipts, transfers, reservations, stock counts and permitted adjustments.", []),
+        "Receipts, transfers, reservations, stock counts and permitted adjustments.",
+        ["items.view", "parties.view", "warehouses.view", "purchasing.view", "receipts.create",
+         "stock.view", "stock.create", "stock.export", "adjustments.create", "assembly.view",
+         "assembly.edit"]),
     "assembly_technician": ("Assembly Technician", "internal",
-        "Assigned assembly orders, material consumption and quality checklists.", []),
+        "Assigned assembly orders, material consumption and quality checklists.",
+        ["items.view", "warehouses.view", "bom.view", "assembly.view", "assembly.edit", "stock.view"]),
     "quality_inspector": ("Quality Inspector", "internal",
-        "Inspection records, pass / hold / rework decisions and approved test parameters.", []),
+        "Inspection records, pass / hold / rework decisions and approved test parameters.",
+        ["items.view", "warehouses.view", "purchasing.view", "bom.view", "assembly.view",
+         "stock.view", "quality.create", "quality.configure"]),
     "sales_officer": ("Sales Officer", "internal",
         "Enquiries, quotations, customers and sales orders.", []),
     "sales_approver": ("Sales Approver", "internal",

@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app import jobs
+from app import assembly, inventory, jobs, masters, procurement
 from app.admin import router as admin_router
 from app.audit import request_info
 from app.auth import CSRF_COOKIE, DB, require
@@ -42,6 +42,7 @@ async def lifespan(_: FastAPI):
     with SessionLocal() as db:  # role templates added by this version reach existing installs
         if db.get(Company, 1):
             sync_templates(db)
+            masters.seed_reference_data(db)
             db.commit()
     stop = jobs.start_in_background() if settings.run_worker_in_api else None
     yield
@@ -136,6 +137,8 @@ app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts) 
 api = APIRouter(prefix="/api/v1")
 api.include_router(auth_router)
 api.include_router(admin_router)
+for module in (masters, procurement, inventory, assembly):
+    api.include_router(module.router)
 
 
 @api.get("/health/live", tags=["health"])

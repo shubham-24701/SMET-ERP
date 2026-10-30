@@ -216,6 +216,9 @@ def setup(body: SetupIn, response: Response, db: DB) -> dict:
                 password_hash=hasher.hash(body.password))  # fmt: skip
     db.add(user)
     sync_templates(db)
+    from app.masters import seed_reference_data  # here: masters imports this module
+
+    seed_reference_data(db)
     admin_role = db.scalar(select(Role).where(Role.template_key == "system_admin"))
     db.flush()
     db.add(UserRole(user_id=user.id, role_id=admin_role.id))
