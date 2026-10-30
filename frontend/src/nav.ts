@@ -1,6 +1,6 @@
 import {
   Activity, ArrowLeftRight, Barcode, Briefcase, Calculator, FileSignature, Inbox, ReceiptText, Send, Boxes, Building2, ClipboardCheck, ClipboardList, Factory, FileText, LayoutDashboard,
-  ListTree, MapPin, Package, ScanLine, Wrench, Layers, PackageCheck, ScrollText, Settings2, ShieldCheck, ShoppingCart, Truck, Users, Warehouse, type LucideIcon,
+  BadgeCheck, BellRing, CalendarClock, Headset, ListTree, MapPin, ShieldHalf, Package, ScanLine, Wrench, Layers, PackageCheck, ScrollText, Settings2, ShieldCheck, ShoppingCart, Truck, Users, Warehouse, type LucideIcon,
 } from 'lucide-react'
 
 /** `perm`: shown only to users holding it, or one of `a|b` (the server enforces it regardless). */
@@ -32,6 +32,16 @@ export const NAV: { group: string; items: NavItem[] }[] = [
       { path: '/installation/banks', label: 'Battery banks', icon: Layers, perm: 'installation.view' },
       { path: '/trace', label: 'Find a battery', icon: ScanLine, perm: 'stock.view' },
       { path: '/installation/checks', label: 'Site checks', icon: Wrench, perm: 'installation.view|installation.configure' },
+    ],
+  },
+  {
+    group: 'After-sales',
+    items: [
+      { path: '/service', label: 'Service requests', icon: Headset, perm: 'service.view' },
+      { path: '/amc', label: 'Maintenance contracts', icon: CalendarClock, perm: 'amc.view' },
+      { path: '/warranty', label: 'Warranty registrations', icon: BadgeCheck, perm: 'warranty.view' },
+      { path: '/warranty/policies', label: 'Warranty policies', icon: ShieldHalf, perm: 'warranty.view' },
+      { path: '/service/alerts', label: 'Maintenance alerts', icon: BellRing, perm: 'codes.view' },
     ],
   },
   {

@@ -46,6 +46,8 @@ const TONE: Record<string, Tone> = {
   expired: 'warning', partly_dispatched: 'warning', dispatched: 'info', delivered: 'success', planning: 'neutral',
   planned: 'neutral', superseded: 'neutral', done: 'success', scheduled: 'info', started: 'warning',
   installed: 'info', commissioned: 'info', handed_over: 'success', in_service: 'success', removed: 'warning',
+  under_review: 'info', pending_action: 'warning', correction_required: 'warning', ended: 'neutral', renewed: 'neutral',
+  urgent: 'danger', high: 'warning', normal: 'neutral', low: 'neutral', in_repair: 'warning', verified: 'info', code_recorded: 'success',
 }
 const WORDS: Record<string, string> = {
   partly_received: 'Partly received', awaiting_inspection: 'Awaiting inspection', on_hold: 'On hold',
@@ -53,7 +55,8 @@ const WORDS: Record<string, string> = {
   returned_to_supplier: 'Returned to supplier', issued: 'On the assembly floor', submitted: 'Waiting for approval',
   partly_dispatched: 'Partly dispatched', declined: 'Declined by customer', accepted: 'Accepted by customer',
   dispatched: 'On the way', started: 'In progress', handed_over: 'Handed over', in_service: 'In service',
-  removed: 'Removed from its bank',
+  removed: 'Removed from its bank', correction_required: 'Correction asked for', in_repair: 'At the workshop',
+  code_recorded: 'Code recorded', no_fault: 'No fault found',
 }
 export const words = (s: string) => WORDS[s] ?? s.charAt(0).toUpperCase() + s.slice(1).replaceAll('_', ' ')
 

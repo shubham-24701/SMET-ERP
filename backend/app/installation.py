@@ -52,8 +52,9 @@ Text = Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000)]
 Short = Annotated[str, StringConstraints(strip_whitespace=True, max_length=160)]
 Position = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=40)]
 SerialNo = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60)]
-Stage = Literal["installation", "commissioning", "handover"]
+Stage = Literal["installation", "commissioning", "handover", "maintenance", "service"]
 STAGES = ("installation", "commissioning", "handover")
+CHECKED = (*STAGES, "maintenance", "service")  # stages with SMET-set checks and an evidence rule
 # stage -> (bank status before, bank status after, date field)
 STEP = {
     "installation": ("planned", "installed", "installed_on"),
@@ -67,7 +68,8 @@ SERIAL_STATUS = {"planned": "delivered", "installed": "installed",
 AT_SITE = ("delivered", "installed", "commissioned", "in_service", "removed")
 BATTERY_KINDS = ("battery_model", "battery_unit")
 PHOTO_RULE = {"installation": "install_photos_min", "commissioning": "commission_photos_min",
-              "handover": "handover_photos_min"}  # fmt: skip
+              "handover": "handover_photos_min", "maintenance": "maintenance_photos_min",
+              "service": "service_photos_min"}  # fmt: skip
 
 
 # ---------- who may do what ----------
@@ -210,7 +212,7 @@ def visit_row(db: Session, v: SiteVisit, p: Principal) -> dict:
         db, [*v.technician_ids, v.completed_by, v.created_by, *(f.uploaded_by for f in files)]
     )
     banks = db.scalars(select(BatteryBank).where(BatteryBank.id.in_(v.bank_ids))).all()
-    stage = v.stage if v.stage in STAGES else None
+    stage = v.stage if v.stage in CHECKED else None
     return visit_brief(db, v, names) | {
         "site": site_ref(db, db.get(Site, v.site_id)),
         "banks": [
@@ -840,7 +842,7 @@ def record_work(visit_id: uuid.UUID, body: RecordIn, p: Worker, db: DB) -> dict:
             raise field_error(
                 "received_serials", f"Not delivered to this site: {', '.join(missing[:10])}"
             )
-    checks = {c.id: c for c in checks_for(db, v.stage)} if v.stage in STAGES else {}
+    checks = {c.id: c for c in checks_for(db, v.stage)} if v.stage in CHECKED else {}
     for field, rows, kind in (
         ("checklist", body.checklist, "check"),
         ("readings", body.readings, "reading"),
@@ -882,7 +884,7 @@ class CompleteIn(BaseModel):
 def _missing(db: Session, v: SiteVisit) -> list[str]:
     """Everything that stops this visit from completing, in words."""
     out = []
-    if v.stage not in STAGES:
+    if v.stage not in CHECKED:
         return out
     done = {r["check_id"] for r in v.checklist if r["done"]}
     taken = {r["check_id"]: r for r in v.readings if r["value"] is not None}
@@ -954,6 +956,12 @@ def complete_visit(visit_id: uuid.UUID, body: CompleteIn, p: Worker, db: DB) -> 
             for _, s, _ in pos:
                 s.status, s.version = SERIAL_STATUS[after], s.version + 1
         _milestone(db, v, body.done_on)
+        if v.stage == "handover":
+            from app.warranty import (
+                open_at_handover,  # here, not at the top: warranty imports this module's neighbours
+            )
+
+            open_at_handover(db, p.user, banks)
     v.status, v.done_on, v.completed_by, v.completed_at = (
         "completed",
         body.done_on,
@@ -1051,10 +1059,15 @@ def list_banks(
     db: DB,
     status_: Annotated[str | None, Query(alias="status")] = None,
     q: Annotated[str | None, Query(max_length=80)] = None,
+    customer_id: uuid.UUID | None = None,
     limit: Limit = 50,
     offset: Offset = 0,
 ) -> dict:
     query = select(BatteryBank).join(Site, Site.id == BatteryBank.site_id)
+    if customer_id:
+        query = query.join(Project, Project.id == Site.project_id).where(
+            Project.customer_id == customer_id
+        )
     if status_:
         query = query.where(BatteryBank.status.in_(status_.split(",")))
     if q:

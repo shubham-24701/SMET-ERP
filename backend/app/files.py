@@ -48,19 +48,8 @@ def safe_name(name: str) -> str:
     return base[-160:] or "file"
 
 
-@router.post("/visits/{visit_id}/files", status_code=status.HTTP_201_CREATED)
-def upload_visit_file(
-    visit_id: uuid.UUID,
-    p: Worker,
-    db: DB,
-    file: Annotated[UploadFile, File()],
-    kind: Annotated[Literal["photo", "test_report", "acknowledgement", "other"], Form()] = "photo",
-    caption: Annotated[str, Form(max_length=300)] = "",
-) -> dict:
-    v = get_or_404(db, SiteVisit, visit_id, "Visit")
-    check_may_work(p, v)
-    if v.status == "cancelled":
-        raise HTTPException(status.HTTP_409_CONFLICT, f"Visit {v.number} is cancelled")
+def read_checked(file: UploadFile, kind: str) -> tuple[bytes, str]:
+    """The file's bytes and real type, or a 413/422 that says what is wrong with it."""
     limit = get_settings().max_upload_mb * 2**20
     data = file.file.read(limit + 1)
     if len(data) > limit:
@@ -81,13 +70,29 @@ def upload_visit_file(
                 }
             ],
         )
-    if kind == "photo" and not ctype.startswith("image/"):
+    if kind in ("photo", "installation_photo") and not ctype.startswith("image/"):
         raise HTTPException(
             422, [{"loc": ["body", "file"], "msg": "A photograph must be an image", "type": "x"}]
         )
-    f = StoredFile(id=uuid.uuid4(), owner_type="visit", owner_id=v.id, kind=kind, name=safe_name(file.filename),
+    return data, ctype
+
+
+def store(
+    db,
+    user,
+    owner_type: str,
+    owner_id,
+    file: UploadFile,
+    kind: str,
+    caption: str,
+    entity: tuple[str, object, str],
+) -> StoredFile:
+    """Checks, writes and records one file in the caller's transaction, then commits; if the commit
+    fails the bytes are removed again (no row, no file). `entity` = (audit type, id, label)."""
+    data, ctype = read_checked(file, kind)
+    f = StoredFile(id=uuid.uuid4(), owner_type=owner_type, owner_id=owner_id, kind=kind, name=safe_name(file.filename),
                    content_type=ctype, size=len(data), sha256=hashlib.sha256(data).hexdigest(),
-                   caption=caption.strip(), uploaded_by=p.user.id)  # fmt: skip
+                   caption=caption.strip(), uploaded_by=user.id if user else None)  # fmt: skip
     target = path_of(f.id)
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_suffix(".part")
@@ -97,23 +102,47 @@ def upload_visit_file(
         db.add(f)
         record(
             db,
-            p.user,
+            user,
             "file.upload",
-            "site_visit",
-            v.id,
-            f"{v.number}: {kind.replace('_', ' ')} {f.name} added",
+            entity[0],
+            entity[1],
+            f"{entity[2]}: {kind.replace('_', ' ')} {f.name} added",
         )
         db.commit()
     except Exception:
-        target.unlink(missing_ok=True)  # no row, no file
+        target.unlink(missing_ok=True)
         raise
+    return f
+
+
+@router.post("/visits/{visit_id}/files", status_code=status.HTTP_201_CREATED)
+def upload_visit_file(
+    visit_id: uuid.UUID,
+    p: Worker,
+    db: DB,
+    file: Annotated[UploadFile, File()],
+    kind: Annotated[Literal["photo", "test_report", "acknowledgement", "other"], Form()] = "photo",
+    caption: Annotated[str, Form(max_length=300)] = "",
+) -> dict:
+    v = get_or_404(db, SiteVisit, visit_id, "Visit")
+    check_may_work(p, v)
+    if v.status == "cancelled":
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Visit {v.number} is cancelled")
+    f = store(db, p.user, "visit", v.id, file, kind, caption, ("site_visit", v.id, v.number))
     return file_row(f, {p.user.id: p.user.name})
 
 
+# Who may open a file: the permission that shows the record it belongs to.
+OWNER_PERM = {"visit": "installation.view", "warranty": "warranty.view", "service": "service.view"}
+
+
 @router.get("/files/{file_id}")
-def download(file_id: uuid.UUID, _: require("installation.view"), db: DB) -> FileResponse:
-    # shortcut: every file belongs to a visit today; owners from later phases bring their own check.
+def download(file_id: uuid.UUID, p: require(), db: DB) -> FileResponse:
+    if not any(p.can(x) for x in OWNER_PERM.values()):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You don't have permission for this")
     f = get_or_404(db, StoredFile, file_id, "File")
+    if not p.can(OWNER_PERM[f.owner_type]):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You don't have permission for this")
     path = path_of(f.id)
     if not path.exists():
         raise HTTPException(

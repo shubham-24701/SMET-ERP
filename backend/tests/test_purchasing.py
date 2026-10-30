@@ -69,6 +69,7 @@ def test_new_warehouses_get_every_area_the_workflows_need(team):
         "rejected",
         "assembly",
         "returns",
+        "repair",
     }
 
 

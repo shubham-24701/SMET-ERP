@@ -1182,6 +1182,10 @@ class SiteVisit(Base):
     completed_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cancel_reason: Mapped[str] = mapped_column(String(500), server_default="")
+    amc_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("amc_contracts.id"), index=True)
+    service_request_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("service_requests.id"), index=True
+    )
     created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = _ts()
     version: Mapped[int] = mapped_column(Integer, server_default="1")
@@ -1194,13 +1198,185 @@ class StoredFile(Base):
     __tablename__ = "files"
     __table_args__ = (Index("files_owner", "owner_type", "owner_id"),)
     id: Mapped[uuid.UUID] = _id()
-    owner_type: Mapped[str] = mapped_column(String(20))  # visit
+    owner_type: Mapped[str] = mapped_column(String(20))  # visit|warranty|service
     owner_id: Mapped[uuid.UUID] = mapped_column(Uuid)
-    kind: Mapped[str] = mapped_column(String(16))  # photo|test_report|acknowledgement|other
+    kind: Mapped[str] = mapped_column(
+        String(20)
+    )  # photo|test_report|acknowledgement|proof_of_purchase|…
     name: Mapped[str] = mapped_column(String(160))
     content_type: Mapped[str] = mapped_column(String(40))
     size: Mapped[int] = mapped_column(Integer)
     sha256: Mapped[str] = mapped_column(String(64))
     caption: Mapped[str] = mapped_column(String(300), server_default="")
-    uploaded_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id")
+    )  # None: public form
     uploaded_at: Mapped[datetime] = _ts()
+
+
+# ======================= Phase 6: warranty and after-sales =======================
+
+
+class WarrantyPolicy(Base):
+    """SMET's warranty terms for one battery model, from a date. Nothing is assumed: a model with no
+    policy can't have a warranty activated. Terms of a policy in use never change; a new policy
+    with a later start date replaces it."""
+
+    __tablename__ = "warranty_policies"
+    __table_args__ = (UniqueConstraint("item_id", "effective_from"),)
+    id: Mapped[uuid.UUID] = _id()
+    item_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("items.id"), index=True)
+    months: Mapped[int] = mapped_column(Integer)
+    start_event: Mapped[str] = mapped_column(String(14))  # sale|installation|commissioning|handover
+    auto_approve: Mapped[bool] = mapped_column(Boolean, server_default=false())
+    requires_proof: Mapped[bool] = mapped_column(Boolean, server_default=true())
+    replacement_rule: Mapped[str] = mapped_column(String(20))  # original_remaining|new_full|longer
+    effective_from: Mapped[date] = mapped_column(Date)
+    notes: Mapped[str] = mapped_column(Text, server_default="")
+    active: Mapped[bool] = mapped_column(Boolean, server_default=true())
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+    created_at: Mapped[datetime] = _ts()
+
+
+class WarrantyRegistration(Base):
+    """One battery's warranty: who, where, which dates, and SMET's decision. At most one open
+    registration per battery (pending, correction required or approved)."""
+
+    __tablename__ = "warranty_registrations"
+    __table_args__ = (
+        Index("one_open_warranty_per_battery", "serial_id", unique=True,
+              postgresql_where=text("status IN ('pending', 'correction_required', 'approved')")),
+    )  # fmt: skip
+    id: Mapped[uuid.UUID] = _id()
+    number: Mapped[str] = mapped_column(String(30), unique=True)
+    serial_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("serials.id"), index=True)
+    route: Mapped[str] = mapped_column(
+        String(20)
+    )  # smet_installation|distributor|direct|public|replacement
+    # pending|correction_required|approved|rejected|ended
+    status: Mapped[str] = mapped_column(String(20), server_default="pending", index=True)
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("parties.id"))
+    customer_name: Mapped[str] = mapped_column(String(160), server_default="")
+    customer_contact: Mapped[str] = mapped_column(String(160), server_default="")
+    address: Mapped[str] = mapped_column(Text, server_default="")
+    distributor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("parties.id"))
+    distributor_name: Mapped[str] = mapped_column(String(160), server_default="")
+    sale_date: Mapped[date | None] = mapped_column(Date)
+    installation_date: Mapped[date | None] = mapped_column(Date)
+    commissioning_date: Mapped[date | None] = mapped_column(Date)
+    handover_date: Mapped[date | None] = mapped_column(Date)
+    policy_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("warranty_policies.id"))
+    start_date: Mapped[date | None] = mapped_column(Date)
+    expiry_date: Mapped[date | None] = mapped_column(Date)
+    replaces_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("warranty_registrations.id"))
+    ended_on: Mapped[date | None] = mapped_column(Date)
+    end_reason: Mapped[str] = mapped_column(String(300), server_default="")
+    notes: Mapped[str] = mapped_column(Text, server_default="")
+    submitted_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision_reason: Mapped[str] = mapped_column(String(500), server_default="")
+    created_at: Mapped[datetime] = _ts()
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+
+
+class AmcContract(Base):
+    """An annual maintenance contract. What it covers is worked out when asked (a battery placed
+    later in a covered bank is covered), so replacements need no editing. Renewal makes a new
+    contract and keeps the old one with its visits."""
+
+    __tablename__ = "amc_contracts"
+    id: Mapped[uuid.UUID] = _id()
+    number: Mapped[str] = mapped_column(String(30), unique=True)
+    customer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("parties.id"), index=True)
+    scope: Mapped[str] = mapped_column(String(10))  # customer|site|bank|batteries
+    site_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sites.id"))
+    bank_ids: Mapped[list[uuid.UUID]] = mapped_column(ARRAY(Uuid), server_default="{}")
+    serial_ids: Mapped[list[uuid.UUID]] = mapped_column(ARRAY(Uuid), server_default="{}")
+    reference: Mapped[str] = mapped_column(String(80), server_default="")
+    starts_on: Mapped[date] = mapped_column(Date)
+    ends_on: Mapped[date] = mapped_column(Date)
+    visit_every_months: Mapped[int] = mapped_column(Integer)
+    service_scope: Mapped[str] = mapped_column(Text, server_default="")
+    covered: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    excluded: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    status: Mapped[str] = mapped_column(
+        String(10), server_default="draft", index=True
+    )  # draft|active|renewed|cancelled
+    renewed_from_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("amc_contracts.id"))
+    cancel_reason: Mapped[str] = mapped_column(String(500), server_default="")
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = _ts()
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+
+
+class ServiceRequest(Base):
+    """A complaint or maintenance request. Status changes follow the allowed transitions and are
+    kept with who, when and why."""
+
+    __tablename__ = "service_requests"
+    id: Mapped[uuid.UUID] = _id()
+    number: Mapped[str] = mapped_column(String(30), unique=True)
+    source: Mapped[str] = mapped_column(String(10))  # internal|public
+    serial_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("serials.id"), index=True)
+    reported_serial: Mapped[str] = mapped_column(String(60), server_default="")
+    bank_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("battery_banks.id"))
+    site_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sites.id"), index=True)
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("parties.id"), index=True)
+    contact_name: Mapped[str] = mapped_column(String(160), server_default="")
+    contact_phone: Mapped[str] = mapped_column(String(60), server_default="")
+    issue: Mapped[str] = mapped_column(Text)
+    priority: Mapped[str] = mapped_column(
+        String(8), server_default="normal"
+    )  # low|normal|high|urgent
+    preferred_visit: Mapped[str] = mapped_column(String(200), server_default="")
+    # new|under_review|scheduled|in_progress|pending_action|closed
+    status: Mapped[str] = mapped_column(String(16), server_default="new", index=True)
+    history: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    coordinator_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    diagnosis: Mapped[str] = mapped_column(Text, server_default="")
+    work_done: Mapped[str] = mapped_column(Text, server_default="")
+    parts: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    resolution: Mapped[str] = mapped_column(
+        String(12), server_default=""
+    )  # repaired|replaced|returned|no_fault|other
+    replacement_serial_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("serials.id"))
+    acknowledgement: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    closure_notes: Mapped[str] = mapped_column(Text, server_default="")
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = _ts()
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+
+
+class MaintenanceAlert(Base):
+    """A battery asking for a maintenance reset code. The code comes from the supplier and is typed
+    in by an authorised person; it is stored encrypted, shown only to that permission, never
+    logged, and erased after the retention period."""
+
+    __tablename__ = "maintenance_alerts"
+    id: Mapped[uuid.UUID] = _id()
+    number: Mapped[str] = mapped_column(String(30), unique=True)
+    serial_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("serials.id"), index=True)
+    service_request_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("service_requests.id"), index=True
+    )
+    description: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(
+        String(14), server_default="open", index=True
+    )  # open|verified|code_recorded|closed
+    verification: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    verified_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    code_ciphertext: Mapped[str | None] = mapped_column(Text)
+    recipient: Mapped[str] = mapped_column(String(160), server_default="")
+    supplier_reference: Mapped[str] = mapped_column(String(120), server_default="")
+    issued_on: Mapped[date | None] = mapped_column(Date)
+    expires_on: Mapped[date | None] = mapped_column(Date)  # only if the supplier states one
+    issued_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    cleared: Mapped[bool | None] = mapped_column(Boolean)  # as confirmed on site, not by any system
+    cleared_note: Mapped[str] = mapped_column(String(500), server_default="")
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = _ts()
+    version: Mapped[int] = mapped_column(Integer, server_default="1")

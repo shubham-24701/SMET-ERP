@@ -1,5 +1,30 @@
 # Release notes
 
+## 0.5.0 · Phase 6: warranty and after-sales · 2026-10-30
+
+New
+- Warranty policies per battery model, entered by SMET; registrations opened at handover, by staff for
+  distributor and direct sales, or on the public form; checked against the policy, approved
+  automatically only where the policy allows, otherwise by someone else; corrections with a reason.
+- Public page: check a battery by its QR label or serial number, see its warranty state, register a
+  warranty or ask for service. Nothing about the customer is shown.
+- Maintenance contracts (AMC) for a customer, site, banks or chosen batteries, with planned visits,
+  reminders for upcoming and overdue visits and contracts ending, and renewal.
+- Service requests: status rules with a kept history, service visits, workshop receipt and return,
+  parts used, replacement batteries, closure with the customer's acknowledgement. Warranty and AMC
+  cover are shown separately.
+- Maintenance alerts: verification, then the supplier's reset code typed in by an authorised person,
+  stored encrypted, shown again only with a reason, erased after the retention period.
+- A battery's lifecycle now includes warranty, service and alert events.
+
+Fixed
+- Re-running `setup_db` no longer gives the app back the right to delete Phase 5 history.
+- List tables kept their columns on desktop (a layout rule turned some into grids).
+
+Upgrade
+- `uv sync` (adds cryptography), `python -m app.setup_db` once (writes `CODES_KEY`; back it up with
+  `.env`), then `uv run alembic upgrade head` (migration 0008; every warehouse gets a service workshop).
+
 ## 0.4.0 · Phase 5: installation and traceability · 2026-10-30
 
 New
