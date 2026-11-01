@@ -153,7 +153,8 @@ See [docs/TEST_RESULTS.md](docs/TEST_RESULTS.md) for the commands and outputs.
 
 - Backend: 156 pytest tests passed (Phases 1–6: 127; Phase 7: 29 including review regressions); ruff clean.
 - Frontend: oxlint and TypeScript clean, 7 Vitest tests.
-- Browser: 7 Playwright journeys passed locally (Chromium); CI result in TEST_RESULTS.md.
+- Browser: 7 Playwright journeys passed locally (Chromium) and in CI (Edge on Windows).
+- CI run 41287446892: every job green.
 - External messages: **mock-tested only**. Email, SMS and WhatsApp adapters are checked against recorded requests and a fake SMTP server; none has been run against a real or sandbox account, and nothing can leave the server while `EXTERNAL_SENDS` is off (the default).
 - Independent reviews of Phases 2–3, 4, 5, 6 and 7: every finding fixed or recorded with its reason (TEST_RESULTS.md).
 
