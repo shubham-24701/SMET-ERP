@@ -13,6 +13,7 @@ import { PurchaseOrderPage, PurchaseOrdersPage, PurchaseRequestPage, PurchaseReq
 import { CorrectionsPage, CountPage, MovesPage, ReservationsPage, SerialPage, SerialsPage, StockPage } from './Stock'
 import { AlertPage, AlertsPage, AmcListPage, AmcPage, PoliciesPage, RegistrationPage, ServiceRequestPage, ServiceRequestsPage, WarrantyPage } from './Aftersales'
 import { BankPage, BanksPage, LabelsPage, StageChecksPage, TracePage, VisitPage, VisitsPage } from './Installation'
+import { FieldConfigProvider, FieldsPage } from './Fields'
 import { MessagesAdminPage, NotificationsPage } from './Messages'
 import { ReportPage, ReportsPage, SearchPage } from './Reports'
 import { Shell } from './Shell'
@@ -59,6 +60,7 @@ export default function App() {
 
   return (
     <MeContext value={me}>
+      <FieldConfigProvider>
       <BrowserRouter>
         <Routes>
           <Route path="print/labels" element={<Allowed perm="stock.view" me={me}><LabelsPage /></Allowed>} />
@@ -115,6 +117,7 @@ export default function App() {
             <Route path="admin/audit" element={<Allowed perm="audit.view" me={me}><AuditPage /></Allowed>} />
             <Route path="admin/company" element={<Allowed perm="settings.view" me={me}><CompanyPage onChange={load} /></Allowed>} />
             <Route path="admin/system" element={<Allowed perm="system.view" me={me}><SystemPage /></Allowed>} />
+            <Route path="admin/fields" element={<Allowed perm="fields.configure" me={me}><FieldsPage /></Allowed>} />
             <Route path="admin/messages" element={<Allowed perm="notifications.view|notifications.configure" me={me}><MessagesAdminPage /></Allowed>} />
             <Route path="admin" element={<Navigate to="/admin/users" replace />} />
             <Route path="notifications" element={<NotificationsPage />} />
@@ -125,6 +128,7 @@ export default function App() {
           </Route>
         </Routes>
       </BrowserRouter>
+      </FieldConfigProvider>
     </MeContext>
   )
 }

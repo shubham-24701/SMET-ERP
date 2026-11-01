@@ -2,6 +2,34 @@
 
 Every result below was produced by running the command shown. Results that have not run yet say so.
 
+## 2026-11-01 · Customization (0.7.0) · local and CI
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Backend | ruff, `uv run pytest -q` | clean; **171 passed** (156 before, 6 customization scenarios, 9 review regressions) |
+| Migration 0010 | down to 0009 and up again, on a database holding a shipped role | report permissions given to roles with the area permission; template grants recorded so startup sync doesn't re-add removed ones |
+| Browser journeys | `npx playwright test` (local Chromium) | **8 passed**, including `customize.spec.ts` (a required choice field added, a built-in field renamed and another hidden, a service status added with its moves, the form changed for another user, the field filled and shown as a report column) |
+| Regression check | the review tests against the code before the fixes | 8 of 9 failed before, all pass after; the ninth (template grants) is checked on the migration above |
+
+### Independent review of the customization work (2026-11-01)
+
+| # | Severity | Finding | Fix | Regression test |
+| --- | --- | --- | --- | --- |
+| 1–2 | High | A required built-in field stopped dispatch planning and purchase-order creation even when filled (checked before the route had copied it) | Required fields are checked when the change is committed, on its final values | `test_a_required_field_filled_in_the_same_request_is_accepted` |
+| 3 | High | An upgrade would give a report back to a shipped role whose area permission an administrator had removed | Migration 0010 records the template grants | migration check above |
+| 4 | High | Any technician could change any visit's details | Only technicians on the visit, as for its record | `test_technicians_fill_details_only_on_their_own_visits` |
+| 5 | High | Odd numbers (1e999, lists) crashed the save | Refused with a field error; finite numbers only | `test_bad_numbers_and_wrong_types_are_refused_not_crashes` |
+| 6 | High | A new service status typed letter by letter got a one-letter key and was refused | The key follows the name until saved; an error if it has no Latin letter | browser journey |
+| 7 | Medium | Required sales-order fields were never checked | Checked at conversion too | covered by 1–2 |
+| 8 | Medium | A removed choice option made saving erase the value | The stored value is kept and offered | `test_finished_records_keep_their_details_and_removed_options_survive` |
+| 9 | Medium | Saving workflows without the roles list wiped "also tell" settings | Left unchanged when the list isn't loaded | code review |
+| 10 | Medium | A deleted role blocked every later rule change | Roles checked only when that setting is changed | `test_a_deleted_role_doesn_t_block_other_rule_changes` |
+| 11 | Medium | Details of closed, cancelled or approved records could be changed | Locked like the record (approved warranties: `warranty.correct`) | `test_finished_records_keep…` |
+| 12 | Medium | Text fields stored objects as text | Text and choice take text only | `test_bad_numbers…` |
+| 13 | Medium | Required custom fields looked enforced but were reminders | Said so on screen ("still to fill in") | — |
+| 14 | Medium | Editors without view permission got a 403 after saving | The answer no longer needs view | `test_editing_without_view_permission…` |
+| 15–21 | Low | Switched-off fields in report data; a custom "Notes" picking up the built-in rule; wrong reason when quotation approval is off; a status called "open"; status keys in customer texts; downgrade leaving `fields.configure`; a double add giving 500 | All fixed | `test_switched_off_fields…`, `test_open_is_not_a_status_name`, code review |
+
 ## 2026-11-01 · Phase 7 · local and CI
 
 | Check | Command | Result |

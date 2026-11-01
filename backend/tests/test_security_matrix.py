@@ -21,7 +21,10 @@ SELF = {("GET", "/api/v1/auth/me"), ("POST", "/api/v1/auth/password"), ("GET", "
         ("POST", "/api/v1/notifications/read"), ("GET", "/api/v1/notifications/preferences"),
         ("PUT", "/api/v1/notifications/preferences"), ("GET", "/api/v1/reports"), ("GET", "/api/v1/dashboards"),
         # filtered by permission inside; each report's own permission is tested in test_reports
-        ("GET", "/api/v1/search"), ("GET", "/api/v1/reports/{name}")}  # fmt: skip
+        ("GET", "/api/v1/search"), ("GET", "/api/v1/reports/{name}"),
+        ("GET", "/api/v1/fields/config"),  # labels and rules every form needs
+        # the record's own view or edit permission decides; tested in test_customization
+        ("GET", "/api/v1/custom-values/{entity}/{record_id}"), ("PUT", "/api/v1/custom-values/{entity}/{record_id}")}  # fmt: skip
 ZERO = "00000000-0000-0000-0000-000000000000"
 
 

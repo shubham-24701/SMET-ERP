@@ -121,7 +121,7 @@ export function ReportPage() {
           <Field label={`${r.date_label} from`} type="date" value={params.get('date_from') ?? ''} onChange={(e) => set('date_from', e.target.value)} />
           <Field label="to" type="date" value={params.get('date_to') ?? ''} onChange={(e) => set('date_to', e.target.value)} />
         </>}
-        {has('status') && select('status', 'Status', r.statuses.map((s) => [s, words(s)]))}
+        {has('status') && select('status', 'Status', (data?.statuses ?? r.statuses).map((s) => [s, words(s)]))}
         {Object.keys(r.flags).length > 0 && select('flag', 'Show', Object.entries(r.flags))}
         {has('item') && <div className="field"><label htmlFor="f-item">Product</label>
           <select id="f-item" value={params.get('item') ?? ''} onChange={(e) => set('item', e.target.value)}><option value="">All</option><ItemOptions items={items} /></select></div>}

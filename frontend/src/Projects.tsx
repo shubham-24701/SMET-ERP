@@ -2,7 +2,8 @@ import { Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { api } from './api'
-import { useAction, useApi, useCan, useMe, useWhen } from './lib'
+import { useAction, useApi, useCan, useMe, useWhen, FieldScope } from './lib'
+import { CustomFields } from './Fields'
 import { Back, Facts, ItemOptions, Status, day, newKey, num, qty, useItems, useWarehouses, type Page, type Ref } from './ops'
 import { InstallationPanel } from './Installation'
 import { useCustomers } from './Sales'
@@ -67,7 +68,7 @@ export function ProjectsPage() {
       {data && <Pager offset={offset} limit={50} total={data.total} onChange={setOffset} />}
       {adding && (
         <Dialog title="New project" onClose={() => setAdding(false)}>
-          <form noValidate onSubmit={(e) => {
+          <FieldScope value="project"><form noValidate onSubmit={(e) => {
             e.preventDefault()
             const fd = new FormData(e.currentTarget)
             void action.run('add', async () => { const p = await api<Project>('/projects', { method: 'POST', body: { name: fd.get('name'), customer_id: fd.get('customer_id'),
@@ -80,7 +81,7 @@ export function ProjectsPage() {
             <p className="hint">Created with milestones for material readiness, delivery, installation, commissioning and handover.</p>
             <FormError message={action.error} />
             <button className="btn btn-primary" disabled={!!action.busy}>Create project</button>
-          </form>
+          </form></FieldScope>
         </Dialog>
       )}
     </>
@@ -91,7 +92,7 @@ function SiteForm({ projectId, site, onDone }: { projectId: string; site: Site |
   const [reqs, setReqs] = useState<[string, string][]>(Object.entries(site?.requirements ?? {}))
   const action = useAction(onDone)
   return (
-    <form noValidate onSubmit={(e) => {
+    <FieldScope value="site"><form noValidate onSubmit={(e) => {
       e.preventDefault()
       const fd = new FormData(e.currentTarget)
       const body = { name: fd.get('name'), address: fd.get('address'), contact: fd.get('contact'), survey_date: fd.get('survey_date') || null,
@@ -118,7 +119,7 @@ function SiteForm({ projectId, site, onDone }: { projectId: string; site: Site |
       </fieldset>
       <FormError message={action.error} />
       <button className="btn btn-primary" disabled={!!action.busy}>{site ? 'Save site' : 'Add site'}</button>
-    </form>
+    </form>{site && <CustomFields entity="site" id={site.id} editPerm="projects.create" />}</FieldScope>
   )
 }
 
@@ -204,6 +205,7 @@ export function ProjectPage() {
       </PageHead>
       <Facts rows={[['Status', <Status s={p.status} />], ['Sites', String(p.sites!.length)], ['Dates', p.start_date || p.end_date ? `${day(p.start_date)} – ${day(p.end_date)}` : 'Not set'],
         ['Approved sheets', String(p.sheets!.filter((s) => s.status === 'approved').length)], ['Reservations', String(p.reservations ?? 0)]]} />
+        <CustomFields entity="project" id={p.id} editPerm="projects.create" />
       <FormError message={action.error} />
       {p.scope && <p className="prewrap">{p.scope}</p>}
 

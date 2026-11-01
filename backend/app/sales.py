@@ -479,10 +479,11 @@ def submit_quotation(
     rl, company = rules(db), db.get(Company, 1)
     r.status, r.submitted_by, r.submitted_at = "submitted", p.user.id, utcnow()
     limit = rl["quote_auto_approve_up_to"]
-    if (limit is not None and r.currency == company.currency and row["total"] <= Decimal(str(limit))
+    if not rl["quote_approval_required"] or (limit is not None and r.currency == company.currency and row["total"] <= Decimal(str(limit))
             and row["max_discount"] <= Decimal(str(rl["quote_max_discount_pct"]))):  # fmt: skip
         r.status, r.decided_at = "approved", utcnow()
-        r.decision_reason = "Approved automatically: within the limits in Rules & numbering"
+        r.decision_reason = ("Approved automatically: within the limits in Rules & numbering" if rl["quote_approval_required"]
+                             else "Approved automatically: quotation approval is switched off in Rules & numbering")  # fmt: skip
     r.version += 1
     record(db, p.user, "quotation.submit", "quotation", qt.id,
            f"{qt.number} R{r.rev} submitted" + (" and approved automatically" if r.status == "approved" else ""))  # fmt: skip

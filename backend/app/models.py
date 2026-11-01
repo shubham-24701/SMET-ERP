@@ -1487,3 +1487,47 @@ class MessageOptOut(Base):
         ForeignKey("users.id", ondelete="SET NULL")
     )
     created_at: Mapped[datetime] = _ts()
+
+
+# ======================= Customization: fields SMET adds or adjusts on screen =======================
+
+
+class CustomField(Base):
+    """An extra field SMET adds to a kind of record (an item, a purchase order, a site...)."""
+
+    __tablename__ = "custom_fields"
+    __table_args__ = (UniqueConstraint("entity", "key"),)
+    id: Mapped[uuid.UUID] = _id()
+    entity: Mapped[str] = mapped_column(String(30))
+    key: Mapped[str] = mapped_column(String(40))  # fixed once made: values are stored under it
+    label: Mapped[str] = mapped_column(String(80))
+    kind: Mapped[str] = mapped_column(String(10))  # text|long_text|number|date|choice|yes_no
+    options: Mapped[list[str]] = mapped_column(ARRAY(String(80)), server_default="{}")
+    required: Mapped[bool] = mapped_column(Boolean, server_default=false())
+    help: Mapped[str] = mapped_column(String(200), server_default="")
+    sort: Mapped[int] = mapped_column(Integer, server_default="0")
+    active: Mapped[bool] = mapped_column(Boolean, server_default=true())
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+
+
+class CustomValues(Base):
+    """The extra fields' values of one record."""
+
+    __tablename__ = "custom_values"
+    entity: Mapped[str] = mapped_column(String(30), primary_key=True)
+    record_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    values: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+    updated_at: Mapped[datetime] = _ts()
+
+
+class FieldSetting(Base):
+    """A built-in field renamed, hidden or made required by SMET."""
+
+    __tablename__ = "field_settings"
+    entity: Mapped[str] = mapped_column(String(30), primary_key=True)
+    field: Mapped[str] = mapped_column(String(40), primary_key=True)
+    label: Mapped[str] = mapped_column(String(80), server_default="")
+    hidden: Mapped[bool] = mapped_column(Boolean, server_default=false())
+    required: Mapped[bool] = mapped_column(Boolean, server_default=false())
+    version: Mapped[int] = mapped_column(Integer, server_default="1")

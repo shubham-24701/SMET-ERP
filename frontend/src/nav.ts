@@ -1,13 +1,13 @@
 import {
   Activity, ArrowLeftRight, Barcode, Briefcase, Calculator, FileSignature, Inbox, ReceiptText, Send, Boxes, Building2, ClipboardCheck, ClipboardList, Factory, FileText, LayoutDashboard,
-  BadgeCheck, BarChart3, BellRing, MessageSquare, CalendarClock, Headset, ListTree, MapPin, ShieldHalf, Package, ScanLine, Wrench, Layers, PackageCheck, ScrollText, Settings2, ShieldCheck, ShoppingCart, Truck, Users, Warehouse, type LucideIcon,
+  BadgeCheck, BarChart3, TextCursorInput, BellRing, MessageSquare, CalendarClock, Headset, ListTree, MapPin, ShieldHalf, Package, ScanLine, Wrench, Layers, PackageCheck, ScrollText, Settings2, ShieldCheck, ShoppingCart, Truck, Users, Warehouse, type LucideIcon,
 } from 'lucide-react'
 
 /** `perm`: shown only to users holding it, or one of `a|b` (the server enforces it regardless). */
 export type NavItem = { path: string; label: string; icon: LucideIcon; perm?: string }
 
-// Any of these shows the Reports entry; each report needs its own area's permission.
-const REPORT_PERMS = 'purchasing.view|stock.view|assembly.view|sales.view|dispatch.view|installation.view|warranty.view|amc.view|service.view'
+// Any report permission shows the Reports entry.
+const REPORT_PERMS = 'reports.*' // each report has its own permission
 
 // Business modules join this list as each phase delivers them; nothing here is a placeholder.
 export const NAV: { group: string; items: NavItem[] }[] = [
@@ -89,6 +89,7 @@ export const NAV: { group: string; items: NavItem[] }[] = [
       { path: '/admin/audit', label: 'Audit log', icon: ScrollText, perm: 'audit.view' },
       { path: '/admin/company', label: 'Company settings', icon: Building2, perm: 'settings.view' },
       { path: '/admin/rules', label: 'Rules & numbering', icon: Settings2, perm: 'settings.view' },
+      { path: '/admin/fields', label: 'Fields', icon: TextCursorInput, perm: 'fields.configure' },
       { path: '/admin/messages', label: 'Messages', icon: MessageSquare, perm: 'notifications.view|notifications.configure' },
       { path: '/admin/system', label: 'System health', icon: Activity, perm: 'system.view' },
     ],

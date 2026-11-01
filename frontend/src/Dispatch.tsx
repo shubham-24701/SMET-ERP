@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { api } from './api'
-import { useAction, useApi, useCan, useMe, useWhen } from './lib'
+import { useAction, useApi, useCan, useMe, useWhen, FieldScope } from './lib'
+import { CustomFields } from './Fields'
 import { Back, Facts, LocationOptions, Status, day, newKey, num, qty, serialList, today, useWarehouses, type Page, type Ref } from './ops'
 import { Dialog, Field, FormError, Logo, PageHead, PageState, Pager, SelectField, TextareaField } from './ui'
 
@@ -97,7 +98,7 @@ export function NewDispatchPage() {
     <>
       <Back to={`/sales/orders/${so.id}`}>{so.number}</Back>
       <PageHead title="Plan a dispatch" intro={`${so.number} · ${so.customer.name}. Planning moves no stock; sending it does.`} />
-      <form noValidate onSubmit={(e) => {
+      <FieldScope value="dispatch"><form noValidate onSubmit={(e) => {
         e.preventDefault()
         const fd = new FormData(e.currentTarget)
         const s = (n: string) => String(fd.get(n) ?? '')
@@ -143,7 +144,7 @@ export function NewDispatchPage() {
         </div>
         <FormError message={action.error} />
         <button className="btn btn-primary" disabled={!!action.busy || !warehouseId}>Plan dispatch</button>
-      </form>
+      </form></FieldScope>
     </>
   )
 }
@@ -187,6 +188,7 @@ export function DispatchPage() {
       <Facts rows={[['Status', <Status s={d.status} />], ['From', `${d.warehouse.code} · ${d.warehouse.name}`], ['Planned', day(d.planned_date)],
         ['Transport', [d.transporter, d.vehicle].filter(Boolean).join(', ') || '—'],
         ['Delivered', d.delivered_on ? `${day(d.delivered_on)}, to ${d.received_by}` : d.dispatched_at ? `Left ${when(d.dispatched_at)}` : '—']]} />
+        <CustomFields entity="dispatch" id={d.id} editPerm="dispatch.create" />
       <FormError message={action.error} />
       <div className="table-wrap">
         <table className="table">

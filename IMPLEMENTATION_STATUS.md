@@ -36,6 +36,16 @@ Nothing here has been sandbox-tested against an external provider or production-
 | 8 | Hardening: 111-checkpoint evidence, performance and concurrency tests, backup/restore drill, deployment package, incident process | Planned |
 | 9 | End-to-end verification, release readiness, activation checklist | Planned |
 
+## Customization (0.7.0): what was built
+
+| Area | What works | Evidence |
+| --- | --- | --- |
+| Report permissions | One permission per report; dashboards, rows and downloads check it; roles that saw the area got it once (migration 0010, templates) | `test_customization.py::test_a_report_needs_its_own_permission…`, `::test_every_report_has_its_own_permission` |
+| Custom fields | Added per kind of record (14 kinds) in Administration → Fields; typed and checked values; required; switched off without losing values; shown on the record, edited with its permission; extra report and download columns | `::test_custom_fields_are_defined_filled_checked_and_reported`, `customize.spec.ts` |
+| Built-in fields | Optional fields renamed, hidden (value kept on save) or required (checked by the server on every route; records the system opens by itself are completed later) | `::test_built_in_fields_can_be_renamed_hidden_or_required`, `customize.spec.ts` |
+| Workflows | Purchase order and quotation approval on or off; extra roles told about each event; service-request statuses and moves edited, with checks against stranded or in-use statuses | `::test_approval_switches_and_extra_roles_told`, `::test_service_statuses_and_moves_are_set_on_screen` |
+| Kept fixed on purpose | Stock, receipt inspection, assembly, warranty and reset-code status flows: the stock ledger, the inspection gate and warranty rules depend on them | design decision |
+
 ## Phase 7: what was built
 
 | Area | What works | Evidence |

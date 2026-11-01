@@ -148,3 +148,14 @@ The System Administrator gets both `notifications.*` permissions; management tem
 limited by their other permissions. Notifications go to the holders of the permission that acts on
 the event (e.g. `purchasing.approve` for a submitted order) or to the people assigned, never to the
 person who did it.
+
+### Customization (0.7.0)
+
+| Permission | Allows |
+| --- | --- |
+| `reports.<name>` (18, one per report) | See that report and its dashboard figures; downloading it also needs `reports.export` |
+| `fields.configure` | Add and change custom fields; rename, hide or require built-in optional fields (guarded: the administrator holds it) |
+
+Migration 0010 gave each report permission to every role that held the report's area view
+permission (e.g. `purchasing.view` → `reports.purchase_orders`); templates get them the same way.
+Filling custom fields needs the record's own edit permission; seeing them, its view permission.

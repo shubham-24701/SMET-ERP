@@ -1,5 +1,23 @@
 # Release notes
 
+## 0.7.0 · Customization · 2026-11-01
+
+New
+- A permission for each report (Roles & permissions → Reports). Roles that could see a report's
+  records were given it once; from now on roles decide.
+- Administration → Fields: add your own fields (short or long text, number, date, choice, yes/no;
+  required or not) to items, suppliers and customers, purchase and assembly orders, quotations,
+  sales orders, projects and sites, dispatches, site visits, battery banks, warranty registrations,
+  maintenance contracts and service requests. They show under "More details" on the record and
+  as extra columns in its reports and downloads. Switching one off keeps its values.
+- Built-in optional fields can be renamed, hidden or made required. Required is checked by the server
+  on every route; a hidden field keeps its value when a form is saved.
+- Rules & numbering → Workflows: purchase order and quotation approval on or off; extra roles told
+  about each kind of notification; service-request statuses and the moves between them.
+
+Upgrade
+- `uv run alembic upgrade head` (migration 0010).
+
 ## 0.6.0 · Phase 7: notifications and reporting · 2026-11-01
 
 New

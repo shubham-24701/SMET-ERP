@@ -54,7 +54,7 @@ def test_numbers_stay_numbers_and_text_cant_become_a_formula(admin, monkeypatch)
     with SessionLocal() as db:  # admin holds audit.view; downloads need reports.export too
         db.execute(
             text(
-                "INSERT INTO role_permissions (role_id, permission) SELECT role_id, 'reports.export' FROM user_roles"
+                "INSERT INTO role_permissions (role_id, permission) SELECT role_id, p FROM user_roles, unnest(ARRAY['reports.export', 'reports.fake']) p"
             )
         )
         db.commit()
@@ -72,7 +72,7 @@ def test_export_refuses_too_many_rows_before_loading_them(admin, monkeypatch):
     with SessionLocal() as db:
         db.execute(
             text(
-                "INSERT INTO role_permissions (role_id, permission) SELECT role_id, 'reports.export' FROM user_roles"
+                "INSERT INTO role_permissions (role_id, permission) SELECT role_id, p FROM user_roles, unnest(ARRAY['reports.export', 'reports.fake']) p"
             )
         )
         db.commit()
@@ -254,7 +254,7 @@ def test_staff_email_keeps_the_link_and_customers_get_their_own_wording(admin, u
 
 def test_report_dates_are_smet_dates(user_with):
     """12: dates were UTC: an order made at 01:30 in Dubai on 1 Nov counted as 31 Oct."""
-    buyer = user_with(perms=BUYER + ["reports.export"])
+    buyer = user_with(perms=BUYER + ["reports.export", "reports.purchase_orders"])
     po = approved_po(
         buyer,
         user_with(perms=["purchasing.view", "purchasing.approve"]),

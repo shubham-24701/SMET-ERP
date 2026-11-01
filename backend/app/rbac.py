@@ -79,8 +79,36 @@ PERMISSIONS: dict[str, tuple[str, str]] = {
     # Phase 7
     "notifications.view": ("Messages", "See the log of email, SMS and WhatsApp messages (recipients masked)"),
     "notifications.configure": ("Messages", "Set up message providers and credentials, change message wording, manage opt-outs"),
+    "fields.configure": ("Fields", "Add custom fields, rename, hide or require built-in ones"),
     "reports.export": ("Reports", "Download reports as CSV or Excel (each download is audited)"),
 }  # fmt: skip
+
+# Each report has its own permission (reports.<name>). Roles that could see a report's records when
+# it arrived were given it (migration 0010, and the templates below); after that, roles decide.
+REPORT_PERMS: dict[str, tuple[str, str]] = {
+    "purchase_orders": ("Purchase orders", "purchasing.view"),
+    "rejected_receipts": ("Rejected and held quantities", "purchasing.view"),
+    "stock_position": ("Stock position", "stock.view"),
+    "repair_returns": ("Returned, repair and held stock", "stock.view"),
+    "stock_moves": ("Stock movements", "stock.view"),
+    "adjustments": ("Stock corrections", "stock.view"),
+    "assembly_orders": ("Assembly orders", "assembly.view"),
+    "quality_holds": ("Quality holds and rework", "assembly.view"),
+    "quotations": ("Quotations", "sales.view"),
+    "sales_orders": ("Sales orders", "sales.view"),
+    "dispatches": ("Dispatches", "dispatch.view"),
+    "site_visits": ("Site visits", "installation.view"),
+    "banks": ("Battery banks", "installation.view"),
+    "warranties": ("Warranties", "warranty.view"),
+    "maintenance_visits": ("Maintenance visits", "amc.view"),
+    "amc_contracts": ("Maintenance contracts", "amc.view"),
+    "service_requests": ("Service requests", "service.view"),
+    "batteries": ("Battery traceability", "stock.view"),
+}
+PERMISSIONS |= {
+    f"reports.{n}": ("Reports", f"See the {t.lower()} report and its dashboard figures")
+    for n, (t, _) in REPORT_PERMS.items()
+}
 
 CONFIGURE_PERMS = [p for p in PERMISSIONS if p.endswith(".configure")]
 ADMIN_PERMS = [
@@ -152,6 +180,14 @@ TEMPLATES: dict[str, tuple[str, str, str, list[str]]] = {
     "customer_user": ("Customer User", "customer",
         "Portal: only this customer's batteries, warranties, service requests and documents.", []),
 }  # fmt: skip
+
+
+for _key, (*_, _perms) in TEMPLATES.items():  # a template seeing an area sees its reports
+    _perms.extend(
+        f"reports.{n}"
+        for n, (_, area) in REPORT_PERMS.items()
+        if area in _perms and f"reports.{n}" not in _perms
+    )
 
 
 def sync_templates(db: Session) -> None:

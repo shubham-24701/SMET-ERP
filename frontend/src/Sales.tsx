@@ -2,7 +2,8 @@ import { Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { api } from './api'
-import { useAction, useApi, useCan, useMe, useWhen } from './lib'
+import { useAction, useApi, useCan, useMe, useWhen, FieldScope } from './lib'
+import { CustomFields } from './Fields'
 import { Back, Facts, ItemOptions, Status, day, money, newKey, num, qty, today, useItems, useWarehouses, type Page, type Ref } from './ops'
 import { Dialog, Field, FormError, PageHead, PageState, Pager, SelectField, TextareaField } from './ui'
 
@@ -308,6 +309,7 @@ export function QuotationPage() {
       <Facts rows={[['Status', <Status s={r.status} />], ['Total', money(r.total, r.currency)], ['Valid until', day(r.valid_until)],
         ['Approval', r.decided_at ? `${r.decided_by ?? 'Automatic'}, ${when(r.decided_at)}` : r.submitted_by ? `Submitted by ${r.submitted_by}` : 'Not submitted'],
         ['Customer', r.customer_answer_at ? `${r.customer_answer_by}, ${day(r.customer_answer_at)}${r.customer_ref ? ` (ref ${r.customer_ref})` : ''}` : '—']]} />
+        <CustomFields entity="quotation" id={qt.id} editPerm="sales.create" />
       <FormError message={action.error} />
       <LinesTable rev={r} />
       {(r.installation_date || r.commissioning_date || r.handover_date) && <p className="muted">Installation {day(r.installation_date)} · commissioning {day(r.commissioning_date)} · handover {day(r.handover_date)}</p>}
@@ -345,7 +347,7 @@ export function QuotationPage() {
       )}
       {dialog === 'convert' && (
         <Dialog title="Create sales order" onClose={() => setDialog(null)}>
-          <form noValidate onSubmit={(e) => {
+          <FieldScope value="sales_order"><form noValidate onSubmit={(e) => {
             e.preventDefault()
             const fd = new FormData(e.currentTarget)
             void action.run('convert', async () => { const so = await post('convert', { delivery_date: fd.get('delivery_date') || null, delivery_address: fd.get('delivery_address'), notes: fd.get('notes') }) as Order; nav(`/sales/orders/${so.id}`) })
@@ -355,7 +357,7 @@ export function QuotationPage() {
             <TextareaField label="Notes" name="notes" maxLength={4000} />
             <FormError message={action.error} />
             <button className="btn btn-primary" disabled={!!action.busy}>Create sales order</button>
-          </form>
+          </form></FieldScope>
         </Dialog>
       )}
     </>
@@ -425,6 +427,7 @@ export function SalesOrderPage() {
       </PageHead>
       <Facts rows={[['Status', <Status s={so.status} />], ['Total', money(so.total, so.currency)], ['Committed delivery', day(so.delivery_date)],
         ['Their reference', so.customer_ref || '—'], ['Still to send', qty(so.pending_goods)]]} />
+        <CustomFields entity="sales_order" id={so.id} editPerm="sales.create" />
       <FormError message={action.error} />
       <div className="table-wrap">
         <table className="table">

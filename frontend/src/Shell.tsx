@@ -76,7 +76,7 @@ export function Shell({ me, mode, onMode, onMe, onSignOut }: {
       setError(e instanceof Error ? e.message : 'Sign-out failed.')
     }
   }
-  const groups = NAV.map((g) => ({ ...g, items: g.items.filter((i) => !i.perm || i.perm.split('|').some((x) => me.permissions.includes(x))) }))
+  const groups = NAV.map((g) => ({ ...g, items: g.items.filter((i) => !i.perm || i.perm.split('|').some((x) => (x.endsWith('.*') ? me.permissions.some((p) => p.startsWith(x.slice(0, -1)) && p !== 'reports.export') : me.permissions.includes(x)))) }))
     .filter((g) => g.items.length)
   return (
     <div className="shell">

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api } from './api'
-import { useAction, useApi, useCan } from './lib'
+import { useAction, useApi, useCan, FieldScope } from './lib'
+import { CustomFields } from './Fields'
 import { KIND, LineRows, PURPOSE, qty, useItems, useWarehouses, type Item, type Loc, type Page, type Row, type Warehouse, newKey, num } from './ops'
 import { Dialog, Field, FormError, PageHead, PageState, Pager, SelectField, Tag, TextareaField } from './ui'
 
@@ -43,7 +44,7 @@ function ItemForm({ item, units, onDone }: { item: Item | null; units: Unit[]; o
   }
   const battery = kind === 'battery_model' || kind === 'battery_unit'
   return (
-    <form onSubmit={save} noValidate>
+    <FieldScope value="item"><form onSubmit={save} noValidate>
       <div className="grid-fields">
         {item ? <Field label="Code" value={item.code} disabled hint="Codes never change: documents refer to them." /> : <Field label="Code" name="code" required maxLength={40} error={fields.code} hint="Letters, digits, - . / _ " />}
         <Field label="Name" name="name" defaultValue={item?.name} required maxLength={160} error={fields.name} />
@@ -71,7 +72,7 @@ function ItemForm({ item, units, onDone }: { item: Item | null; units: Unit[]; o
       </>}
       <FormError message={action.error} />
       <button className="btn btn-primary" disabled={!!action.busy}>{action.busy ? 'Saving…' : item ? 'Save item' : 'Add item'}</button>
-    </form>
+    </form>{item && <CustomFields entity="item" id={item.id} editPerm="items.edit" />}</FieldScope>
   )
 }
 
@@ -233,7 +234,7 @@ function PartyForm({ party, onDone }: { party: Party | null; onDone: () => void 
   }
   const setC = (i: number, k: keyof Contact, v: string) => setContacts(contacts.map((c, j) => (j === i ? { ...c, [k]: v } : c)))
   return (
-    <form onSubmit={save} noValidate>
+    <FieldScope value="party"><form onSubmit={save} noValidate>
       <div className="grid-fields">
         {party ? <Field label="Code" value={party.code} disabled /> : <Field label="Code" name="code" required maxLength={20} error={fields.code} />}
         <Field label="Name" name="name" defaultValue={party?.name} required maxLength={160} error={fields.name} />
@@ -267,7 +268,7 @@ function PartyForm({ party, onDone }: { party: Party | null; onDone: () => void 
       </>}
       <FormError message={action.error} />
       <button className="btn btn-primary" disabled={!!action.busy}>{action.busy ? 'Saving…' : party ? 'Save' : 'Add'}</button>
-    </form>
+    </form>{party && <CustomFields entity="party" id={party.id} editPerm="parties.edit" />}</FieldScope>
   )
 }
 
@@ -429,7 +430,8 @@ export function WarehousesPage() {
 
 // ---------- business rules and document numbering ----------
 
-type Rules = { po_auto_approve_up_to: string | number | null; po_self_approval: boolean; adjustment_self_approval: boolean
+type Rules = { po_approval_required: boolean; quote_approval_required: boolean; event_roles: Record<string, string[]>
+  sr_statuses: { key: string; label: string }[]; sr_moves: Record<string, string[]>; po_auto_approve_up_to: string | number | null; po_self_approval: boolean; adjustment_self_approval: boolean
   install_photos_min: number; commission_photos_min: number; handover_photos_min: number; handover_with_open_issues: boolean
   maintenance_photos_min: number; service_photos_min: number; warranty_self_approval: boolean; public_warranty_dates: boolean
   amc_renewal_notice_days: number; code_retention_days: number; amc_visit_notice_days: number; reminder_repeat_days: number
@@ -547,6 +549,7 @@ export function RulesPage() {
           {edit && <button className="btn btn-primary" disabled={!!action.busy}>Save reminder rules</button>}
         </fieldset>
       </form>
+      <WorkflowRules r={r} version={rules.data.version} edit={edit} roles={roles.data?.items ?? []} onSaved={() => rules.reload()} />
       <section className="settings-row">
         <div><h2>Document numbers</h2><p className="muted">Numbers already issued never change; a new format applies to new documents (open question 11).</p></div>
         <div className="table-wrap">
@@ -579,5 +582,71 @@ export function RulesPage() {
       </section>
       <FormError message={action.error} />
     </>
+  )
+}
+
+
+const SR_BUILTIN: Record<string, string> = { new: 'New', under_review: 'Under review', scheduled: 'Scheduled', in_progress: 'In progress', pending_action: 'Pending action' }
+
+/** Approvals on or off, who else hears about each event, and the service-request status flow. */
+function WorkflowRules({ r, version, edit, roles, onSaved }: { r: Rules; version: number; edit: boolean; roles: { id: string; name: string }[]; onSaved: () => void }) {
+  const events = useApi<{ events: { key: string; label: string }[] }>('/notifications/preferences').data?.events ?? []
+  const [extra, setExtra] = useState(r.sr_statuses)
+  const [moves, setMoves] = useState(r.sr_moves)
+  const [fields, setFields] = useState<Record<string, string>>({})
+  const action = useAction(onSaved)
+  const statuses: Record<string, string> = { ...SR_BUILTIN, ...Object.fromEntries(extra.filter((x) => x.key).map((x) => [x.key, x.label || x.key])) }
+  const toggle = (from: string, to: string) => setMoves((m) => ({ ...m, [from]: (m[from] ?? []).includes(to) ? m[from].filter((x) => x !== to) : [...(m[from] ?? []), to] }))
+  return (
+    <form className="settings-row" noValidate onSubmit={(e) => {
+      e.preventDefault()
+      const fd = new FormData(e.currentTarget)
+      // without the roles list (no roles.view) the selects are empty: leave the setting as it is
+      const event_roles = roles.length ? Object.fromEntries(events.map((ev) => [ev.key, fd.getAll(`roles_${ev.key}`).map(String)])) : undefined
+      const keys = new Set(Object.keys(statuses))
+      const cleaned = Object.fromEntries(Object.entries(moves).filter(([k]) => keys.has(k)).map(([k, v]) => [k, v.filter((x) => keys.has(x))]))
+      setFields({})
+      void action.run('workflow', () => api('/rules', { method: 'PATCH', body: { version, po_approval_required: fd.get('po') === 'on', quote_approval_required: fd.get('quote') === 'on',
+        event_roles, sr_statuses: extra.filter((x) => x.key), sr_moves: cleaned, reason: fd.get('reason') } })
+        .catch((err) => { setFields(fieldsOf(err)); throw err }))
+    }}>
+      <div><h2>Workflows</h2><p className="muted">Which approvals apply, who else is told about each event besides the people whose roles cover it, and the steps a service request goes through.</p></div>
+      <fieldset className="settings-panel plain" disabled={!edit}>
+        <label className="check"><input type="checkbox" name="po" defaultChecked={r.po_approval_required} /> <span>Purchase orders need approval (off: approved on submission, recorded as automatic)</span></label>
+        <label className="check"><input type="checkbox" name="quote" defaultChecked={r.quote_approval_required} /> <span>Quotations need approval</span></label>
+        <h3 className="section">Also tell these roles</h3>
+        <div className="grid-fields">{events.map((ev) => (
+          <div key={ev.key} className="field"><label htmlFor={`er-${ev.key}`}>{ev.label}</label>
+            <select key={roles.length ? 'roles' : 'loading'} id={`er-${ev.key}`} name={`roles_${ev.key}`} multiple disabled={!roles.length} size={Math.min(4, Math.max(roles.length, 2))} defaultValue={r.event_roles[ev.key] ?? []}>
+              {roles.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+            </select></div>
+        ))}</div>
+        {fields.event_roles && <p className="field-error">{fields.event_roles}</p>}
+        <h3 className="section">Service request statuses</h3>
+        <p className="hint">New and Closed always exist; closing has its own button. Add your own steps and tick where each status may go next.</p>
+        {extra.map((x, i) => (
+          <div key={i} className="grid-fields">
+            <Field label="Name" value={x.label} maxLength={40} error={x.label && !x.key ? 'Start the name with a letter A–Z' : undefined}
+              onChange={(e) => setExtra(extra.map((y, j) => (j !== i ? y : { label: e.target.value,
+                // the key follows the name until the status is saved; after that it stays, as requests use it
+                key: r.sr_statuses.some((z) => z.key === y.key) ? y.key : e.target.value.toLowerCase().replace(/[^a-z]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 16) })))} />
+            <button type="button" className="btn btn-ghost" onClick={() => setExtra(extra.filter((_, j) => j !== i))}>Remove</button>
+          </div>
+        ))}
+        <button type="button" className="btn btn-secondary" onClick={() => setExtra([...extra, { key: '', label: '' }])}>Add a status</button>
+        {(fields.sr_statuses || fields.sr_moves) && <p className="field-error">{fields.sr_statuses || fields.sr_moves}</p>}
+        <div className="table-wrap section"><table className="table">
+          <thead><tr><th scope="col">From</th>{Object.entries(statuses).filter(([k]) => k !== 'new').map(([k, l]) => <th key={k} scope="col">{l}</th>)}</tr></thead>
+          <tbody>{Object.entries(statuses).map(([from, label]) => (
+            <tr key={from}><th scope="row">{label}</th>{Object.keys(statuses).filter((k) => k !== 'new').map((to) => (
+              <td key={to}>{to !== from && <input type="checkbox" aria-label={`${label} to ${statuses[to]}`} checked={(moves[from] ?? []).includes(to)} onChange={() => toggle(from, to)} />}</td>
+            ))}</tr>
+          ))}</tbody>
+        </table></div>
+        <TextareaField label="Reason for the change" name="reason" maxLength={500} />
+        <FormError message={action.busy === 'workflow' ? '' : action.error} />
+        {edit && <button className="btn btn-primary" disabled={!!action.busy}>Save workflows</button>}
+      </fieldset>
+    </form>
   )
 }
