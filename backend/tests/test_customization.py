@@ -8,11 +8,13 @@ from tests.conftest import API, new_client
 from tests.ops import item, ok, supplier
 from tests.test_notifications import BUYER, SERVICE, inbox
 
-PO_BODY = lambda sup, it: {
-    "supplier_id": sup["id"],
-    "currency": "AED",
-    "lines": [{"item_id": it["id"], "qty": 2, "unit_price": 5}],
-}  # noqa: E731
+
+def po_body(sup, it):
+    return {
+        "supplier_id": sup["id"],
+        "currency": "AED",
+        "lines": [{"item_id": it["id"], "qty": 2, "unit_price": 5}],
+    }
 
 
 def test_every_report_has_its_own_permission():
@@ -51,7 +53,7 @@ def test_custom_fields_are_defined_filled_checked_and_reported(admin, user_with)
     )
     assert f["key"] == "incoterm"
     po = ok(
-        buyer.post(f"{API}/purchase-orders", json=PO_BODY(supplier(buyer), item(buyer, "CELL"))),
+        buyer.post(f"{API}/purchase-orders", json=po_body(supplier(buyer), item(buyer, "CELL"))),
         201,
     )
     url = f"{API}/custom-values/purchase_order/{po['id']}"
@@ -151,7 +153,7 @@ def test_approval_switches_and_extra_roles_told(admin, user_with):
         )
     )
     sup, it = supplier(buyer), item(buyer, "CELL")
-    po = ok(buyer.post(f"{API}/purchase-orders", json=PO_BODY(sup, it)), 201)
+    po = ok(buyer.post(f"{API}/purchase-orders", json=po_body(sup, it)), 201)
     po = ok(buyer.post(f"{API}/purchase-orders/{po['id']}/submit", json={"version": po["version"]}))
     run_due_jobs()
     assert po["status"] == "submitted" and [n["event"] for n in inbox(boss)["items"]] == [
@@ -163,7 +165,7 @@ def test_approval_switches_and_extra_roles_told(admin, user_with):
             f"{API}/rules", json={"version": rules["version"], "po_approval_required": False}
         )
     )
-    po = ok(buyer.post(f"{API}/purchase-orders", json=PO_BODY(sup, it)), 201)
+    po = ok(buyer.post(f"{API}/purchase-orders", json=po_body(sup, it)), 201)
     po = ok(buyer.post(f"{API}/purchase-orders/{po['id']}/submit", json={"version": po["version"]}))
     assert po["status"] == "approved" and "switched off" in po["decision_reason"]
 
@@ -189,10 +191,13 @@ def test_service_statuses_and_moves_are_set_on_screen(admin, user_with):
     ok(admin.patch(f"{API}/rules", json={"version": rules["version"], "sr_statuses": [{"key": "waiting_parts", "label": "Waiting for parts"}],
                                          "sr_moves": moves}))  # fmt: skip
     assert ok(coord.get(f"{API}/service/flow"))["statuses"]["waiting_parts"] == "Waiting for parts"
-    mv = lambda to: coord.post(
-        f"{API}/service-requests/{sr['id']}/status",
-        json={"version": ok(coord.get(f"{API}/service-requests/{sr['id']}"))["version"], "to": to},
-    )  # noqa: E731
+
+    def mv(to):
+        version = ok(coord.get(f"{API}/service-requests/{sr['id']}"))["version"]
+        return coord.post(
+            f"{API}/service-requests/{sr['id']}/status", json={"version": version, "to": to}
+        )
+
     assert mv("waiting_parts").status_code == 409  # not from "new"
     ok(mv("under_review"))
     ok(mv("in_progress"))
@@ -206,6 +211,7 @@ def test_service_statuses_and_moves_are_set_on_screen(admin, user_with):
     assert ok(coord.get(f"{API}/service-requests", params={"status": "open"}))["total"] == 1
     rules = ok(admin.get(f"{API}/rules"))
     r = admin.patch(
-        f"{API}/rules", json={"version": rules["version"], "sr_statuses": [], "sr_moves": {}}
+        f"{API}/rules",
+        json={"version": rules["version"], "sr_statuses": [], "sr_moves": flow["moves"]},
     )
     assert r.status_code == 422 and "still in use" in r.text

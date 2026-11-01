@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { api, upload } from './api'
 import { useAction, useApi, useCan, useMe, useWhen } from './lib'
+import { CustomFields } from './Fields'
 import { Back, Facts, Status, day, num, serialList, today, words, type Page, type Ref } from './ops'
 import { Dialog, Field, FormError, PageHead, PageState, Pager, SelectField, TextareaField } from './ui'
 
@@ -107,6 +108,7 @@ export function VisitPage() {
         ['Technicians', people(v.technicians)], ['Site', <span className="prewrap">{v.site.address || v.site.name}</span>],
         ['Site ready', v.site_ready == null ? 'Not checked' : v.site_ready ? 'Yes' : 'No'],
         ['Contacts', v.contacts.length ? v.contacts.map((c) => [c.name, c.role, c.phone].filter(Boolean).join(', ')).join('; ') : '—']]} />
+        <CustomFields entity="site_visit" id={v.id} editPerm="installation.create|installation.record" />
       {v.access_notes && <p className="prewrap muted">Access: {v.access_notes}</p>}
       <FormError message={action.error} />
 
@@ -579,6 +581,7 @@ export function BankPage() {
         {coord && b.status === 'planned' && <button className="btn btn-primary" onClick={() => setDialog('add')}>Add batteries</button>}
       </PageHead>
       <Facts rows={[['Stage', <Status s={b.status} />], ['Installed', day(b.installed_on)], ['Commissioned', day(b.commissioned_on)], ['Handed over', day(b.handed_over_on)], ['Batteries', String(b.positions.length)]]} />
+      <CustomFields entity="bank" id={b.id} editPerm="installation.create" />
       <FormError message={action.error} />
       <h2 className="section">Batteries</h2>
       {b.positions.length === 0 ? <p className="empty-line">No batteries in this bank.</p> : (

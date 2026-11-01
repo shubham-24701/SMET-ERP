@@ -181,7 +181,13 @@ RULE_DEFAULTS: dict = {
     "quote_approval_required": True,
     "event_roles": {},  # event -> role ids also told, besides those whose permissions cover it
     "sr_statuses": [],  # extra service-request statuses [{key, label}] besides the built-in ones
-    "sr_moves": {},  # status -> statuses it may move to; empty = the built-in moves
+    "sr_moves": {  # status -> statuses it may move to (closing has its own action, from any open status)
+        "new": ["scheduled", "under_review"],
+        "under_review": ["in_progress", "pending_action", "scheduled"],
+        "scheduled": ["in_progress", "pending_action", "under_review"],
+        "in_progress": ["pending_action", "scheduled"],
+        "pending_action": ["in_progress", "scheduled", "under_review"],
+    },
 }
 
 
@@ -215,7 +221,7 @@ class SrStatus(BaseModel):
 
 def _check_workflow(db: Session, after: dict) -> None:
     from app.messaging import EVENTS  # noqa: PLC0415  (messaging imports this module)
-    from app.service import ALLOWED, SR_BUILTIN  # noqa: PLC0415
+    from app.service import SR_BUILTIN  # noqa: PLC0415
 
     for event, roles in after["event_roles"].items():
         if event not in EVENTS:
@@ -226,7 +232,9 @@ def _check_workflow(db: Session, after: dict) -> None:
     if set(keys) & set(SR_BUILTIN) or len(set(keys)) != len(keys):
         raise field_error("sr_statuses", "Each new status needs its own name, not a built-in one")
     statuses = set(SR_BUILTIN) | set(keys)
-    moves = after["sr_moves"] or ALLOWED
+    moves = after["sr_moves"]
+    if not moves:
+        raise field_error("sr_moves", "Service requests need at least one move")
     for frm, tos in moves.items():
         if frm not in statuses or frm == "closed" or not set(tos) <= statuses - {"new", "closed"}:
             raise field_error(

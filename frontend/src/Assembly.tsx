@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { api } from './api'
 import { useAction, useApi, useCan, useWhen } from './lib'
+import { CustomFields } from './Fields'
 import {
   Back, Facts, ItemOptions, LineRows, LocationOptions, Status, day, newKey, num, qty, serialList, useItems, useRows,
   useWarehouses, type Page, type Ref, type Row,
@@ -217,6 +218,7 @@ export function AssemblyOrderPage() {
       {built && <p className="notice notice-success" role="status">Battery {built} recorded. It waits for inspection.</p>}
       <Facts rows={[['Status', <Status s={o.status} />], ['Built', `${o.qty_built} of ${o.qty_planned}`], ['Passed', String(o.qty_passed)],
         ['Responsible', o.responsible ?? 'Not assigned'], ['Target', day(o.target_date)]]} />
+        <CustomFields entity="assembly_order" id={o.id} editPerm="assembly.create" />
       <FormError message={action.error} />
       {o.status === 'draft' && short.length > 0 && (
         <div className="notice notice-warning">

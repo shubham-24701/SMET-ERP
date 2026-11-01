@@ -1,4 +1,5 @@
 import { X } from 'lucide-react'
+import { useFieldRule } from './lib'
 import { useEffect, useId, useRef, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
 
 function useDescribedBy(error?: string, hint?: string) {
@@ -15,12 +16,19 @@ function useDescribedBy(error?: string, hint?: string) {
 
 type Extra = { label: string; error?: string; hint?: string }
 
+/** A field SMET hid still sends its current value, so saving a form never erases it. */
+function Kept({ name, value }: { name?: string; value: unknown }) {
+  return name ? <input type="hidden" name={name} value={value === undefined || value === null ? '' : String(value)} readOnly /> : null
+}
+
 export function Field({ label, error, hint, ...input }: InputHTMLAttributes<HTMLInputElement> & Extra) {
   const { id, describedBy, notes } = useDescribedBy(error, hint)
+  const rule = useFieldRule(input.name)
+  if (rule?.hidden) return <Kept name={input.name} value={input.value ?? input.defaultValue} />
   return (
     <div className="field">
-      <label htmlFor={id}>{label}</label>
-      <input id={id} aria-invalid={error ? true : undefined} aria-describedby={describedBy} {...input} />
+      <label htmlFor={id}>{rule?.label || label}{rule?.required && ' *'}</label>
+      <input id={id} aria-invalid={error ? true : undefined} aria-describedby={describedBy} {...input} required={input.required || rule?.required} />
       {notes}
     </div>
   )
@@ -28,10 +36,12 @@ export function Field({ label, error, hint, ...input }: InputHTMLAttributes<HTML
 
 export function TextareaField({ label, error, hint, ...area }: TextareaHTMLAttributes<HTMLTextAreaElement> & Extra) {
   const { id, describedBy, notes } = useDescribedBy(error, hint)
+  const rule = useFieldRule(area.name)
+  if (rule?.hidden) return <Kept name={area.name} value={area.value ?? area.defaultValue} />
   return (
     <div className="field">
-      <label htmlFor={id}>{label}</label>
-      <textarea id={id} rows={2} aria-invalid={error ? true : undefined} aria-describedby={describedBy} {...area} />
+      <label htmlFor={id}>{rule?.label || label}{rule?.required && ' *'}</label>
+      <textarea id={id} rows={2} aria-invalid={error ? true : undefined} aria-describedby={describedBy} {...area} required={area.required || rule?.required} />
       {notes}
     </div>
   )
@@ -41,9 +51,11 @@ export function SelectField({ label, error, hint, options, ...select }: SelectHT
   options: [value: string, label: string][]
 }) {
   const { id, describedBy, notes } = useDescribedBy(error, hint)
+  const rule = useFieldRule(select.name)
+  if (rule?.hidden) return <Kept name={select.name} value={select.value ?? select.defaultValue} />
   return (
     <div className="field">
-      <label htmlFor={id}>{label}</label>
+      <label htmlFor={id}>{rule?.label || label}{rule?.required && ' *'}</label>
       <select id={id} aria-invalid={error ? true : undefined} aria-describedby={describedBy} {...select}>
         {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
       </select>

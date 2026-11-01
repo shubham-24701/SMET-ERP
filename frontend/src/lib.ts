@@ -2,6 +2,20 @@ import { createContext, useCallback, useContext, useEffect, useState, type FormE
 import { api, ApiError, type Me } from './api'
 
 export const MeContext = createContext<Me | null>(null)
+
+/** Built-in fields SMET renamed, hid or made required, per kind of record (Administration → Fields). */
+export type FieldRule = { label: string; hidden: boolean; required: boolean }
+export type CustomDef = { id: string; entity: string; key: string; label: string; kind: 'text' | 'long_text' | 'number' | 'date' | 'choice' | 'yes_no'
+  options: string[]; required: boolean; help: string; sort: number; active: boolean; version: number }
+export type FieldConfig = Record<string, { builtin: Record<string, FieldRule>; custom: CustomDef[] }>
+export const FieldConfigContext = createContext<FieldConfig>({})
+/** The kind of record a form edits: its fields follow that record's rules. */
+export const FieldScope = createContext('')
+export function useFieldRule(name?: string): FieldRule | undefined {
+  const entity = useContext(FieldScope)
+  const config = useContext(FieldConfigContext)
+  return entity && name ? config[entity]?.builtin[name] : undefined
+}
 export const useMe = () => useContext(MeContext)!
 
 /** Hides what the user can't use. The server checks every request anyway; this is for clarity only. */

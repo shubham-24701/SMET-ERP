@@ -434,13 +434,6 @@ def renew_amc(amc_id: uuid.UUID, body: RenewIn, p: require("amc.create"), db: DB
 OPEN_SR = ("new", "under_review", "scheduled", "in_progress", "pending_action")
 SR_BUILTIN = {"new": "New", "under_review": "Under review", "scheduled": "Scheduled", "in_progress": "In progress",
               "pending_action": "Pending action", "closed": "Closed"}  # fmt: skip
-ALLOWED = {
-    "new": {"under_review", "scheduled"},
-    "under_review": {"scheduled", "in_progress", "pending_action"},
-    "scheduled": {"in_progress", "pending_action", "under_review"},
-    "in_progress": {"pending_action", "scheduled"},
-    "pending_action": {"under_review", "scheduled", "in_progress"},
-}  # closing has its own action, from any open status
 
 
 def sr_flow(db: Session) -> tuple[dict[str, str], dict[str, list[str]]]:
@@ -448,7 +441,7 @@ def sr_flow(db: Session) -> tuple[dict[str, str], dict[str, list[str]]]:
     The built-in statuses always exist: visits, closing and reports rely on them."""
     r = rules(db)
     statuses = SR_BUILTIN | {s["key"]: s["label"] for s in r["sr_statuses"]}
-    moves = r["sr_moves"] or {k: sorted(v) for k, v in ALLOWED.items()}
+    moves = r["sr_moves"]  # closing has its own action, from any open status
     return statuses, moves
 
 

@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { api, upload } from './api'
-import { useAction, useApi, useCan, useMe, useWhen } from './lib'
+import { useAction, useApi, useCan, useMe, useWhen, FieldScope } from './lib'
+import { CustomFields } from './Fields'
 import { Back, Facts, ItemOptions, LocationOptions, Status, day, newKey, num, serialList, today, useItems, useWarehouses, words, type Page, type Ref } from './ops'
 import { useCustomers } from './Sales'
 import { Dialog, Field, FormError, PageHead, PageState, Pager, SelectField, TextareaField } from './ui'
@@ -64,14 +65,17 @@ type Sr = SrBrief & {
   resolution: string; replacement: { id: string; serial: string; status: string } | null; acknowledgement: { name?: string; on?: string }
   closure_notes: string; visits: VisitBrief[]; alerts: { id: string; number: string; status: string }[]; files: FileRow[]; coordinator_id: string | null
 }
-const NEXT: Record<string, string[]> = { new: ['under_review', 'scheduled'], under_review: ['scheduled', 'in_progress', 'pending_action'],
-  scheduled: ['in_progress', 'pending_action', 'under_review'], in_progress: ['pending_action', 'scheduled'], pending_action: ['under_review', 'scheduled', 'in_progress'] }
+/** The statuses and moves SMET set in Rules & numbering. */
+function useFlow() {
+  return useApi<{ statuses: Record<string, string>; moves: Record<string, string[]> }>('/service/flow').data
+}
 
 export function ServiceRequestsPage() {
   const can = useCan()
   const nav = useNavigate()
   const when = useWhen()
-  const [status, setStatus] = useState('new,under_review,scheduled,in_progress,pending_action')
+  const [status, setStatus] = useState('open')
+  const flow = useFlow()
   const [q, setQ] = useState('')
   const [offset, setOffset] = useState(0)
   const [adding, setAdding] = useState(false)
@@ -83,7 +87,7 @@ export function ServiceRequestsPage() {
       </PageHead>
       <div className="toolbar" role="search">
         <Field label="Number, serial, contact or issue" type="search" value={q} onChange={(e) => { setQ(e.target.value); setOffset(0) }} />
-        <SelectField label="Status" value={status} onChange={(e) => { setStatus(e.target.value); setOffset(0) }} options={[['new,under_review,scheduled,in_progress,pending_action', 'Open'], ['new', 'New'], ['pending_action', 'Pending action'], ['closed', 'Closed'], ['', 'All']]} />
+        <SelectField label="Status" value={status} onChange={(e) => { setStatus(e.target.value); setOffset(0) }} options={[['open', 'Open'], ...Object.entries(flow?.statuses ?? { new: 'New', pending_action: 'Pending action', closed: 'Closed' }), ['', 'All']]} />
       </div>
       {error ? <PageState kind="error" title="Couldn't load requests" message={error} />
         : !data ? <PageState kind="loading" title="Loading…" />
@@ -111,7 +115,7 @@ export function ServiceRequestsPage() {
 function NewSr({ onDone, serial }: { onDone: (sr: Sr) => void; serial?: string }) {
   const action = useAction(() => {})
   return (
-    <form noValidate onSubmit={(e) => {
+    <FieldScope value="service_request"><form noValidate onSubmit={(e) => {
       e.preventDefault()
       const fd = new FormData(e.currentTarget)
       const s = (k: string) => String(fd.get(k) ?? '')
@@ -129,7 +133,7 @@ function NewSr({ onDone, serial }: { onDone: (sr: Sr) => void; serial?: string }
       <Field label="Preferred visit" name="preferred_visit" maxLength={200} />
       <FormError message={action.error} />
       <button className="btn btn-primary" disabled={!!action.busy}>Open request</button>
-    </form>
+    </form></FieldScope>
   )
 }
 
@@ -162,6 +166,7 @@ type SrDialog = 'move' | 'visit' | 'receive' | 'part' | 'replace' | 'close' | 'd
 export function ServiceRequestPage() {
   const { id } = useParams()
   const can = useCan()
+  const flow = useFlow()
   const when = useWhen()
   const nav = useNavigate()
   const { data: sr, error, reload } = useApi<Sr>(`/service-requests/${id}`)
@@ -183,13 +188,14 @@ export function ServiceRequestPage() {
       <Back to="/service">Service requests</Back>
       <PageHead title={sr.number} intro={`${sr.customer?.name ?? 'Customer not known yet'}${sr.site ? ` · ${sr.site.name}` : ''}`}>
         {edit && <button className="btn btn-secondary" onClick={() => setDialog('details')}>Assign and record</button>}
-        {edit && NEXT[sr.status] && <button className="btn btn-secondary" onClick={() => setDialog('move')}>Change status</button>}
+        {edit && !!flow?.moves[sr.status]?.length && <button className="btn btn-secondary" onClick={() => setDialog('move')}>Change status</button>}
         {edit && sr.site && can('installation.create') && <button className="btn btn-secondary" onClick={() => setDialog('visit')}>Schedule visit</button>}
         {edit && <button className="btn btn-primary" onClick={() => setDialog('close')}>Close request</button>}
       </PageHead>
       <Facts rows={[['Status', <Status s={sr.status} />], ['Priority', <Status s={sr.priority} />], ['Battery', sr.serial ? <Link to={`/stock/serials/${sr.serial.id}`}>{sr.serial.serial}</Link> : sr.reported_serial ? `${sr.reported_serial} (not found)` : '—'],
         ['Bank', sr.bank ? <Link to={`/installation/banks/${sr.bank.id}`}>{sr.bank.number} {sr.bank.name}</Link> : '—'], ['Contact', [sr.contact_name, sr.contact_phone].filter(Boolean).join(', ') || '—'],
         ['Coordinator', sr.coordinator ?? 'Not assigned']]} />
+        <CustomFields entity="service_request" id={sr.id} editPerm="service.create" />
       <p className="prewrap">{sr.issue}</p>
       {sr.preferred_visit && <p className="muted">Preferred visit: {sr.preferred_visit}</p>}
       {sr.status === 'closed' && <p className="notice notice-success">Closed: {words(sr.resolution)}. {sr.closure_notes}{sr.acknowledgement.name && ` Accepted by ${sr.acknowledgement.name} on ${day(sr.acknowledgement.on)}.`}</p>}
@@ -235,7 +241,7 @@ export function ServiceRequestPage() {
 
       {dialog === 'move' && <Dialog title="Change status" onClose={() => setDialog(null)}>
         <form noValidate onSubmit={form((fd) => post('status', { to: fd.get('to'), reason: fd.get('reason') }))}>
-          <SelectField label="To" name="to" options={NEXT[sr.status].map((s): [string, string] => [s, words(s)])} />
+          <SelectField label="To" name="to" options={(flow?.moves[sr.status] ?? []).map((s): [string, string] => [s, flow?.statuses[s] ?? words(s)])} />
           <TextareaField label="Reason" name="reason" maxLength={500} rows={2} hint="Needed for pending action: say what it is waiting for" />
           <FormError message={action.error} /><button className="btn btn-primary" disabled={!!action.busy}>Change status</button>
         </form></Dialog>}
@@ -463,7 +469,7 @@ function AmcForm({ onDone }: { onDone: (c: Amc) => void }) {
   const action = useAction(() => {})
   const lines = (v: FormDataEntryValue | null) => String(v ?? '').split('\n').map((x) => x.trim()).filter(Boolean)
   return (
-    <form noValidate onSubmit={(e) => {
+    <FieldScope value="amc_contract"><form noValidate onSubmit={(e) => {
       e.preventDefault()
       const fd = new FormData(e.currentTarget)
       void action.run('add', async () => onDone(await api<Amc>('/amc', { method: 'POST', body: { customer_id: cust, scope, site_id: scope === 'site' ? fd.get('site_id') : null,
@@ -492,7 +498,7 @@ function AmcForm({ onDone }: { onDone: (c: Amc) => void }) {
       </div>
       <FormError message={action.error} />
       <button className="btn btn-primary" disabled={!!action.busy || !cust}>Create draft</button>
-    </form>
+    </form></FieldScope>
   )
 }
 
@@ -518,6 +524,7 @@ export function AmcPage() {
       <Facts rows={[['Status', <Status s={c.status} />], ['Period', `${day(c.starts_on)} – ${day(c.ends_on)}`], ['Visits', `Every ${c.visit_every_months} months`],
         ['Covers', `${SCOPE[c.scope]}${c.site ? `: ${c.site.name}` : ''}${c.banks.length ? `: ${c.banks.map((b) => b.number).join(', ')}` : ''}`],
         ['Renewal', c.renewed_by ? <Link to={`/amc/${c.renewed_by.id}`}>Renewed as {c.renewed_by.number}</Link> : c.renewed_from ? <Link to={`/amc/${c.renewed_from.id}`}>Renews {c.renewed_from.number}</Link> : '—']]} />
+        <CustomFields entity="amc_contract" id={c.id} editPerm="amc.create" />
       {c.status === 'cancelled' && <p className="notice notice-warning">Cancelled: {c.cancel_reason}</p>}
       <FormError message={action.error} />
       {c.service_scope && <p className="prewrap">{c.service_scope}</p>}
@@ -612,7 +619,7 @@ function RegForm({ reg, onDone }: { reg?: Reg; onDone: (r: Reg) => void }) {
   const { customers, sellers } = usePartners()
   const action = useAction(() => {})
   return (
-    <form noValidate onSubmit={(e) => {
+    <FieldScope value="warranty_registration"><form noValidate onSubmit={(e) => {
       e.preventDefault()
       const fd = new FormData(e.currentTarget)
       const s = (k: string) => String(fd.get(k) ?? '')
@@ -648,7 +655,7 @@ function RegForm({ reg, onDone }: { reg?: Reg; onDone: (r: Reg) => void }) {
       <p className="hint">Which date starts the warranty depends on the model's policy. Attach the proof of purchase next.</p>
       <FormError message={action.error} />
       <button className="btn btn-primary" disabled={!!action.busy}>{reg ? 'Save and check again' : 'Register'}</button>
-    </form>
+    </form></FieldScope>
   )
 }
 
@@ -680,6 +687,7 @@ export function RegistrationPage() {
       <Facts rows={[['Status', <Status s={r.expired ? 'expired' : r.status} />], ['Warranty', r.start_date ? `${day(r.start_date)} – ${day(r.expiry_date)}` : r.would_start ? `Would run ${day(r.would_start)} – ${day(r.would_expire)}` : '—'],
         ['Customer', [r.customer?.name ?? r.customer_name, r.customer_contact].filter(Boolean).join(', ') || '—'], ['Sold by', r.distributor?.name ?? (r.distributor_name || '—')],
         ['Battery', <Link to={`/stock/serials/${r.serial.id}`}>{r.serial.serial}</Link>], ['Replaces', r.replaces ? <Link to={`/warranty/${r.replaces.id}`}>{r.replaces.number}</Link> : '—']]} />
+        <CustomFields entity="warranty_registration" id={r.id} editPerm="warranty.create" />
       <FormError message={action.error} />
       {r.missing.length > 0 && <section className="panel panel-wide"><h2>Still needed before approval</h2><ul className="missing">{r.missing.map((m) => <li key={m}>{m}</li>)}</ul></section>}
       <div className="grid-2 section">
@@ -708,7 +716,7 @@ export function RegistrationPage() {
           <FormError message={action.error} /><button className="btn btn-primary" disabled={!!action.busy}>Record decision</button>
         </form></Dialog>}
       {dialog === 'correct' && <Dialog title={`Correct ${r.number}`} onClose={() => setDialog(null)}>
-        <form noValidate onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget)
+        <FieldScope value="warranty_registration"><form noValidate onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget)
           const body: Record<string, unknown> = { reason: fd.get('reason') }
           for (const k of ['customer_name', 'customer_contact', 'address', 'sale_date', 'installation_date', 'commissioning_date', 'handover_date']) {
             const v = String(fd.get(k) ?? ''); const was = String((r as unknown as Record<string, string | null>)[k] ?? '')
@@ -724,7 +732,7 @@ export function RegistrationPage() {
           <TextareaField label="Address" name="address" maxLength={2000} rows={2} defaultValue={r.address} />
           <TextareaField label="Reason for the correction" name="reason" required minLength={3} maxLength={500} rows={2} />
           <FormError message={action.error} /><button className="btn btn-primary" disabled={!!action.busy}>Correct</button>
-        </form></Dialog>}
+        </form></FieldScope></Dialog>}
     </>
   )
 }

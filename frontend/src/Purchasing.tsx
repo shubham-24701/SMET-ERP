@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { api } from './api'
-import { useAction, useApi, useCan, useMe, useWhen } from './lib'
+import { useAction, useApi, useCan, useMe, useWhen, FieldScope } from './lib'
+import { CustomFields } from './Fields'
 import {
   Back, Facts, LineRows, Status, day, money, newKey, num, qty, serialList, useItems, useRows, useWarehouses,
   type Page, type Ref, type Row,
@@ -218,7 +219,7 @@ function POForm({ po, onDone }: { po: PO | null; onDone: (po: PO) => void }) {
   const action = useAction(() => {})
   const [fields, setFields] = useState<Record<string, string>>({})
   return (
-    <form noValidate onSubmit={(e) => {
+    <FieldScope value="purchase_order"><form noValidate onSubmit={(e) => {
       e.preventDefault()
       const fd = new FormData(e.currentTarget)
       const body = {
@@ -244,7 +245,7 @@ function POForm({ po, onDone }: { po: PO | null; onDone: (po: PO) => void }) {
       <TextareaField label="Notes" name="notes" defaultValue={po?.notes} maxLength={4000} />
       <FormError message={action.error} />
       <button className="btn btn-primary" disabled={!!action.busy}>{po ? 'Save changes' : 'Create draft'}</button>
-    </form>
+    </form></FieldScope>
   )
 }
 
@@ -476,6 +477,7 @@ export function PurchaseOrderPage() {
         ['Raised', `${po.created_by}, ${when(po.created_at)}`],
         ['Approval', po.decided_at ? `${po.decided_by ?? 'Automatic'}, ${when(po.decided_at)}` : po.submitted_at ? `Waiting since ${when(po.submitted_at)}` : 'Not submitted'],
       ]} />
+      <CustomFields entity="purchase_order" id={po.id} editPerm="purchasing.create" />
       <FormError message={action.error} />
       <div className="table-wrap">
         <table className="table">
