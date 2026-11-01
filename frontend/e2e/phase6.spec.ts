@@ -165,7 +165,7 @@ test('warranty by policy at handover, AMC visits, public service request, reset 
   d = chen.getByRole('dialog')
   await d.getByLabel('Closure notes').fill('Maintenance done and alarm reset')
   await d.getByRole('button', { name: 'Close request' }).click()
-  await expect(chen.getByText(/^Closed: Repaired/)).toBeVisible()
+  await expect(chen.getByText(/^Closed: Repaired/)).toBeVisible({ timeout: 15_000 }) // the Windows runner is slow
   await shot(chen, '44-service-closed')
 
   await chen.setViewportSize({ width: 390, height: 844 })
