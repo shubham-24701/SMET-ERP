@@ -3,17 +3,17 @@ installed, commissioned and handed over by visits that meet SMET's checks and ev
 changes keep their history, and a battery's QR label and timeline tell its story without leaking it."""
 
 import io
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 
 from app.config import get_settings
-from tests.conftest import API, new_client
+from tests.conftest import API, new_client, smet_today
 from tests.ops import ALL, item, key, ok, stock_in, supplier, warehouse
 
 JPEG = b"\xff\xd8\xff\xe0" + b"0" * 200
 PDF = b"%PDF-1.4\n" + b"0" * 200
-TODAY = str(date.today())
+TODAY = str(smet_today())
 
 
 @pytest.fixture
@@ -139,7 +139,7 @@ def test_a_bank_goes_from_delivery_to_handover_one_stage_at_a_time(site):
               "checklist": [{"check_id": check["id"], "done": True}], "issues": [{"text": "Cable tray loose"}]}))  # fmt: skip
     future = tech.post(
         f"{API}/visits/{v['id']}/complete",
-        json={"version": v["version"], "done_on": str(date.today() + timedelta(days=1))},
+        json={"version": v["version"], "done_on": str(smet_today() + timedelta(days=1))},
     )
     assert future.status_code == 422
     v = ok(

@@ -1,7 +1,7 @@
 """Phase 7 notifications and messages: who hears about what, and that nothing leaves the server
 until it is switched on, configured and allowed."""
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import select, update
@@ -13,7 +13,7 @@ from app.jobs import run_due_jobs
 from app.messaging import mask, normalise
 from app.models import AuditEvent, MessageDelivery
 from app.notify import check_due
-from tests.conftest import API, new_client
+from tests.conftest import API, new_client, smet_today
 from tests.ops import approved_po, item, ok, supplier
 
 BUYER = [
@@ -330,7 +330,7 @@ def test_reminders_repeat_on_schedule_and_escalate(admin, user_with):
     )
     boss = user_with("operations_manager")
     po = ok(buyer.post(f"{API}/purchase-orders", json={"supplier_id": supplier(buyer)["id"], "currency": "AED",
-            "expected_arrival": str(date.today() - timedelta(days=2)),
+            "expected_arrival": str(smet_today() - timedelta(days=2)),
             "lines": [{"item_id": item(buyer, "CELL")["id"], "qty": 4, "unit_price": 10}]}), 201)  # fmt: skip
     po = ok(buyer.post(f"{API}/purchase-orders/{po['id']}/submit", json={"version": po["version"]}))
     ok(approver.post(f"{API}/purchase-orders/{po['id']}/approve", json={"version": po["version"]}))
@@ -344,7 +344,7 @@ def test_reminders_repeat_on_schedule_and_escalate(admin, user_with):
             check_due(db, day)
         return [n for n in inbox(buyer)["items"] if n["event"] == "procurement.delayed"]
 
-    today = date.today()
+    today = smet_today()
     assert len(late(today)) == 1 and len(late(today)) == 1  # once per period, however often it runs
     assert not [
         n for n in inbox(boss)["items"] if n["event"] == "procurement.delayed"

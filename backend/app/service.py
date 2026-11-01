@@ -38,7 +38,16 @@ from app.inventory import (
     serials_at,
     whole,
 )
-from app.masters import Limit, NumbersRoute, Offset, get_or_404, item_ref, next_number, rules
+from app.masters import (
+    Limit,
+    NumbersRoute,
+    Offset,
+    company_today,
+    get_or_404,
+    item_ref,
+    next_number,
+    rules,
+)
 from app.models import (
     AmcContract,
     BankPosition,
@@ -87,7 +96,7 @@ def current_bank(db: Session, serial_id) -> BatteryBank | None:
 def amc_of(db: Session, s: Serial, on: date | None = None) -> list[dict]:
     """Contracts covering this battery on a day, worked out from each contract's scope. A renewed
     contract still covers until its own end."""
-    on = on or date.today()
+    on = on or company_today(db)
     if (
         s.status not in AT_CUSTOMER
     ):  # in the workshop, in stock, scrapped: no contract covers it there
@@ -190,7 +199,7 @@ def _amc_targets(db: Session, body: AmcIn) -> dict:
 
 
 def amc_row(db: Session, c: AmcContract, full: bool = False) -> dict:
-    today = date.today()
+    today = company_today(db)
     shown = "expired" if c.status == "active" and c.ends_on < today else c.status
     row = {"id": c.id, "number": c.number, "customer": party_ref(db.get(Party, c.customer_id)), "scope": c.scope,
            "reference": c.reference, "starts_on": c.starts_on, "ends_on": c.ends_on, "status": shown,
@@ -234,8 +243,8 @@ def list_amc(
     if status_:
         query = query.where(AmcContract.status.in_(status_.split(",")))
     if expiring:  # active and ending within the renewal notice, not yet renewed
-        query = query.where(AmcContract.status == "active", AmcContract.ends_on >= date.today(),
-                            AmcContract.ends_on <= date.today() + timedelta(days=int(rules(db)["amc_renewal_notice_days"])))  # fmt: skip
+        query = query.where(AmcContract.status == "active", AmcContract.ends_on >= company_today(db),
+                            AmcContract.ends_on <= company_today(db) + timedelta(days=int(rules(db)["amc_renewal_notice_days"])))  # fmt: skip
     if q:
         like = f"%{q.strip()}%"
         query = query.where(
@@ -253,7 +262,7 @@ def list_amc(
 @router.get("/amc/reminders")
 def amc_reminders(_: require("amc.view"), db: DB) -> dict:
     """What needs chasing: maintenance visits due within the notice days, overdue ones, and contracts to renew."""
-    today = date.today()
+    today = company_today(db)
     notice = int(rules(db)["amc_visit_notice_days"])
     open_ = SiteVisit.status.in_(("scheduled", "started"))
     up = db.scalars(select(SiteVisit).where(SiteVisit.amc_id.is_not(None), open_, SiteVisit.scheduled_on >= today,
@@ -868,7 +877,7 @@ def use_part(
             lot=body.lot,
         )
     sr.parts = [*sr.parts, {"item": item.code, "name": item.name, "qty": str(body.qty), "unit": item.unit_code,
-                            "lot": body.lot, "serials": body.serials, "by": p.user.name, "on": date.today().isoformat()}]  # fmt: skip
+                            "lot": body.lot, "serials": body.serials, "by": p.user.name, "on": company_today(db).isoformat()}]  # fmt: skip
     sr.version += 1
     record(
         db,
@@ -985,7 +994,7 @@ def close_sr(sr_id: uuid.UUID, body: CloseIn, p: require("service.create"), db: 
                 "Send the replacement, or replace the battery in its bank on the service visit, first"
             )
         carry_to_replacement(
-            db, p.user, orig, new, date.today(), f"{sr.number}: {body.closure_notes}"
+            db, p.user, orig, new, company_today(db), f"{sr.number}: {body.closure_notes}"
         )
         # Contracts listing the original battery cover its replacement from now on.
         for c in db.scalars(select(AmcContract).where(AmcContract.scope == "batteries", any_(AmcContract.serial_ids) == orig.id,

@@ -128,7 +128,7 @@ def is_guarded(perm: str) -> bool:
     """Permissions that give power over other people or the system's configuration. Nobody can
     grant one they don't hold, nor change someone who holds one they lack."""
     module, _, action = perm.partition(".")
-    return module in ("users", "roles") or action in ("configure", "sensitive")
+    return module in ("users", "roles") or action == "configure"
 
 
 OVERSIGHT = VIEW_ALL + ["stock.export", "reports.export"]

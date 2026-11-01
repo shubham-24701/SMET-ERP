@@ -15,12 +15,12 @@ to updates gets a message about their own service request or warranty registrati
 """
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -29,7 +29,7 @@ from app.auth import DB, CurrentPrincipal
 from app.config import get_settings
 from app.jobs import enqueue, handler, periodic
 from app.masters import Limit, Offset, company_today, rules
-from app.messaging import EVENTS, queue, render, wording
+from app.messaging import EVENTS, mask, queue, render, wording
 from app.models import (
     AmcContract,
     AssemblyOrder,
@@ -403,3 +403,19 @@ def save_preferences(body: PrefsIn, p: CurrentPrincipal, db: DB) -> dict:
     u.notify_email, u.muted_events = body.notify_email, sorted(set(body.muted_events) & set(EVENTS))
     db.commit()
     return {"notify_email": u.notify_email, "muted_events": u.muted_events}
+
+
+@periodic(86400)
+def purge_old(db: Session) -> None:
+    """Retention: read notifications and the text of sent messages, after the rule's days."""
+    from app.models import MessageDelivery  # noqa: PLC0415
+
+    r = rules(db)
+    db.execute(delete(Notification).where(Notification.read_at.is_not(None),
+                                          Notification.created_at < utcnow() - timedelta(days=int(r["notification_retention_days"]))))  # fmt: skip
+    old = select(MessageDelivery).where(MessageDelivery.created_at < utcnow() - timedelta(days=int(r["message_retention_days"])),
+                                        MessageDelivery.body != "")  # fmt: skip
+    for d in db.scalars(old.limit(5000)):
+        d.body, d.subject, d.params = "", "", []
+        d.recipient, d.sent_to = mask(d.recipient), mask(d.sent_to) if d.sent_to else ""
+    db.commit()

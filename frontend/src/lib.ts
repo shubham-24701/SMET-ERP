@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, type FormEvent } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type FormEvent } from 'react'
 import { api, ApiError, type Me } from './api'
 
 export const MeContext = createContext<Me | null>(null)
@@ -42,13 +42,17 @@ export function useWhen() {
 export function useApi<T>(path: string | null) {
   const [data, setData] = useState<T | null>(null)
   const [error, setError] = useState('')
+  const latest = useRef(0) // only the newest request's answer is kept: an older, slower one can't overwrite it
   const load = useCallback(async () => {
     if (!path) return
+    const n = ++latest.current
     try {
-      setData(await api<T>(path))
+      const d = await api<T>(path)
+      if (n !== latest.current) return
+      setData(d)
       setError('')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong.')
+      if (n === latest.current) setError(e instanceof Error ? e.message : 'Something went wrong.')
     }
   }, [path])
   // oxlint-disable-next-line react/set-state-in-effect -- loading from the API on mount is syncing with an external system

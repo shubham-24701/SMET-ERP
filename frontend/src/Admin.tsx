@@ -416,6 +416,7 @@ export function CompanyPage({ onChange }: { onChange: () => void }) {
 
 type Status = {
   version: string; database_mb: number; database_version: string; worker_in_api: boolean
+  integrations: { name: string; state: "ok" | "off" | "warning" | "error"; detail: string }[]
   jobs: { pending: number; running: number; done: number; dead: number; dead_jobs: { id: string; kind: string; attempts: number; last_error: string }[] }
 }
 
@@ -437,6 +438,13 @@ export function SystemPage() {
         <div><dt>Database size</dt><dd>{data.database_mb.toLocaleString('en-GB', { minimumFractionDigits: 1 })} <span className="unit">MB</span></dd></div>
         <div><dt>Background worker</dt><dd>{data.worker_in_api ? 'Inside the API' : 'Separate process'}</dd></div>
       </dl>
+      <section className="panel panel-wide" aria-labelledby="int-title">
+        <h2 id="int-title">Connections and safeguards</h2>
+        <ul className="feed">{data.integrations.map((x) => (
+          <li key={x.name}><span>{x.name}<span className="small muted"> {x.detail}</span></span>
+            <Tag tone={x.state === 'ok' ? 'success' : x.state === 'error' ? 'danger' : x.state === 'warning' ? 'warning' : 'neutral'}>{x.state === 'ok' ? 'OK' : x.state === 'off' ? 'Off' : x.state === 'warning' ? 'Check' : 'Error'}</Tag></li>
+        ))}</ul>
+      </section>
       <section className="panel panel-wide" aria-labelledby="jobs-title">
         <h2 id="jobs-title">Background jobs</h2>
         <p className="muted">Reminders, notifications and clean-ups run here. A job that fails is retried with growing waits, up to five times, then kept below.</p>

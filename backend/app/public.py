@@ -26,7 +26,7 @@ from sqlalchemy.exc import IntegrityError
 from app.audit import record, request_info
 from app.auth import DB, rate_limit
 from app.files import read_checked, store
-from app.masters import next_number, rules
+from app.masters import company_today, next_number, rules
 from app.models import Item, Serial, ServiceRequest, WarrantyRegistration
 from app.service import _target
 from app.trace import PUBLIC_STATUS
@@ -118,7 +118,13 @@ def public_registration(
                   .where(Serial.serial == serial.strip().upper(), Item.kind.in_(("battery_model", "battery_unit"))))  # fmt: skip
     taken = s and db.scalar(select(WarrantyRegistration.id).where(WarrantyRegistration.serial_id == s.id,
                                                                   WarrantyRegistration.status.in_(OPEN)))  # fmt: skip
-    if website or s is None or taken or s.status not in LEFT_SMET or purchase_date > date.today():
+    if (
+        website
+        or s is None
+        or taken
+        or s.status not in LEFT_SMET
+        or purchase_date > company_today(db)
+    ):
         log.info(
             "Public registration not recorded (unknown, already registered, not sold, or filtered)"
         )

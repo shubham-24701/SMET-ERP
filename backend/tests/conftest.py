@@ -24,13 +24,23 @@ from alembic.config import Config  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import select, text  # noqa: E402
 
-from app.auth import _attempts, hasher  # noqa: E402
+from app.auth import CSRF_COOKIE, _attempts, hasher  # noqa: E402
 from app.config import BACKEND_DIR, get_settings  # noqa: E402
 from app.db import Base, SessionLocal, make_engine  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Role, RolePermission, User, UserRole  # noqa: E402
 
 API = "/api/v1"
+
+
+def smet_today():
+    """Today in the company's time zone (Asia/Dubai), as the app dates things."""
+    from datetime import datetime  # noqa: PLC0415
+    from zoneinfo import ZoneInfo  # noqa: PLC0415
+
+    return datetime.now(ZoneInfo("Asia/Dubai")).date()
+
+
 PASSWORD = "correct-horse-battery"
 ADMIN = {"company_name": "Demo Trading LLC", "name": "Test Admin", "email": "admin@example.test",
          "password": PASSWORD}  # fmt: skip
@@ -63,8 +73,16 @@ def clean_db():
     wipe()
 
 
-def new_client() -> TestClient:
-    c = TestClient(app)
+def new_client(**kw) -> TestClient:
+    """A browser stand-in: it sends the CSRF cookie's value as the header, also after sign-in
+    replaces it, as the web app does."""
+    c = TestClient(app, **kw)
+
+    def follow(r):
+        if token := r.cookies.get(CSRF_COOKIE):
+            c.headers["X-CSRF-Token"] = token
+
+    c.event_hooks["response"].append(follow)
     c.headers["X-CSRF-Token"] = c.get(f"{API}/auth/csrf").json()["csrf_token"]
     return c
 

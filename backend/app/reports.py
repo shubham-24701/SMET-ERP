@@ -829,7 +829,10 @@ def export_report(name: str, p: require("reports.export"), db: DB, f: Annotated[
     rows, _ = run(db, r, f, None)
     rows = with_custom(db, name, rows)
     cols = columns(db, name, r)
-    keys, heads = [k for k, _ in cols], [lab for _, lab in cols]
+    keys, heads = (
+        [k for k, _ in cols],
+        [csv_cell(lab) for _, lab in cols],
+    )  # labels are typed by admins
     stamp = _today().isoformat()
     if format == "csv":
         out = io.StringIO()

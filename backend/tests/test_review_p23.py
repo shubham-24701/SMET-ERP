@@ -1,9 +1,7 @@
 """Regressions for the independent review of Phases 2–3 (2026-10-30). Each test failed before its fix."""
 
-from datetime import date
-
 from tests import test_assembly
-from tests.conftest import API
+from tests.conftest import API, smet_today
 from tests.ops import (
     ALL,
     approved_po,
@@ -198,10 +196,10 @@ def test_repeats_return_the_same_answer_and_numbering_skips_taken_serials(plant)
     ok(a.post(f"{API}/assembly-orders/{ao['id']}/issue", json={"key": key(), "lines": [
         {"item_id": plant["cell"]["id"], "qty": 8, "serials": [f"CL{n}" for n in range(1, 9)]},
         {"item_id": plant["bms"]["id"], "qty": 2, "lot": "L1"}, {"item_id": plant["cable"]["id"], "qty": 4}]}))  # fmt: skip
-    taken = f"SMET-{date.today().year}-00001"
+    taken = f"SMET-{smet_today().year}-00001"
     ok(build(plant, ao, ["CL1", "CL2", "CL3", "CL4"], serial=taken, cable=2), 201)
     auto = ok(build(plant, ao, ["CL5", "CL6", "CL7", "CL8"], cable=2), 201)
-    assert auto["serial"] == f"SMET-{date.today().year}-00002"
+    assert auto["serial"] == f"SMET-{smet_today().year}-00002"
 
 
 def test_a_model_with_a_bill_of_materials_keeps_its_kind(plant):  # L16

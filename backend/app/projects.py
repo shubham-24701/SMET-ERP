@@ -24,7 +24,16 @@ from app.assembly import OrderIn, plan_order
 from app.audit import diff, record
 from app.auth import DB, require
 from app.inventory import Key, claim_key, conflict, free, lock_items, remember, reserve
-from app.masters import Limit, NumbersRoute, Offset, get_or_404, item_ref, next_number, page
+from app.masters import (
+    Limit,
+    NumbersRoute,
+    Offset,
+    company_today,
+    get_or_404,
+    item_ref,
+    next_number,
+    page,
+)
 from app.models import (
     AssemblyOrder,
     Item,
@@ -597,7 +606,7 @@ def update_milestone(
     if "due_date" in body.model_fields_set:
         m.due_date = body.due_date
     if body.done is not None:
-        m.done_at = (body.done_at or date.today()) if body.done else None
+        m.done_at = (body.done_at or company_today(db)) if body.done else None
     m.version += 1
     record(db, p.user, "milestone.update", "project", m.project_id, f"Milestone {m.title} changed",
            diff(before, {"title": m.title, "due_date": str(m.due_date), "done_at": str(m.done_at)}))  # fmt: skip

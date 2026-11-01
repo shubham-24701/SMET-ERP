@@ -1,5 +1,39 @@
 # Release notes
 
+## 0.8.0 · Phase 8: security, integration and operational hardening · 2026-11-01
+
+New
+- Backups: `python -m app.backup create | verify | restore` (database and files, with checksums);
+  a monthly restore drill and incident steps in `docs/operations/RUNBOOK.md`.
+- Uploads can pass a virus scanner (MALWARE_SCAN_COMMAND, e.g. ClamAV); a refused or failed scan
+  stores nothing. Each file records whether it was scanned.
+- Files can live in an S3-compatible bucket (FILES_BACKEND=s3) instead of this computer's disk.
+- Behind a reverse proxy, the real client address is used for limits and the audit log
+  (TRUSTED_PROXIES), and only from the proxies listed.
+- Every date (deliveries, warranties, quotations, reminders, reports) is SMET's date in its time
+  zone, whatever the server's clock is set to.
+- Retention: read notifications are deleted and old message texts cleared after the days set in
+  Rules & numbering; business records and files stay.
+- System health lists file storage, the virus scanner, each message channel, the supplier API,
+  backups and the server clock.
+- Performance and concurrency check (`tests/load_check.py`) with a few years' synthetic volume.
+
+Security fixes (independent review, no critical or high findings)
+- A restore puts back the app login's limits on history tables (before, it lifted them).
+- Wrong passwords from one address no longer lock the account out for everyone else.
+- The person who submitted a warranty can't correct its dates after approval.
+- Sign-in replaces the CSRF token; spreadsheet downloads neutralise column headings too.
+- `APP_ENV=production` refuses to start without `COOKIE_SECURE=true`; HTTPS answers carry HSTS.
+- The database owner's password no longer appears in the process list during backups.
+
+Fixed
+- A list that depends on an earlier choice (a customer's battery banks, for example) could show the
+  answer for the previous choice when that answer arrived late. Only the newest answer is shown now.
+
+Upgrade
+- `uv run alembic upgrade head` (migration 0011). Schedule the nightly backup (runbook).
+- Run first-time setup before the server is reachable from outside.
+
 ## 0.7.0 · Customization · 2026-11-01
 
 New

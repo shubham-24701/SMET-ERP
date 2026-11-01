@@ -9,12 +9,12 @@ from app.db import SessionLocal
 from app.models import AuditEvent, MaintenanceAlert
 from app.warranty import expiry_for
 from tests import test_installation
-from tests.conftest import API, new_client
+from tests.conftest import API, new_client, smet_today
 from tests.ops import key, ok, stock_in, supplier
 from tests.test_installation import JPEG, PDF, TODAY, bank, photo, visit
 
 site = test_installation.site  # B1–B6 delivered to Tower A; pm (everything), boss, tech, other
-T = date.today()
+T = smet_today()
 
 
 def policy(x, **kw):
@@ -160,7 +160,11 @@ def test_a_distributor_sale_is_checked_against_policy_and_decided_by_someone_els
         )
     # An authorised correction recomputes the dates and is kept with its reason.
     newsale = str(T - timedelta(days=3))
-    r = ok(pm.post(f"{API}/warranty-registrations/{r['id']}/correct", json={"version": r["version"], "reason": "Invoice date misread",
+    own = {"version": r["version"], "reason": "Invoice date misread", "sale_date": newsale}
+    assert (
+        pm.post(f"{API}/warranty-registrations/{r['id']}/correct", json=own).status_code == 403
+    )  # submitter
+    r = ok(boss.post(f"{API}/warranty-registrations/{r['id']}/correct", json={"version": r["version"], "reason": "Invoice date misread",
                "sale_date": newsale}))  # fmt: skip
     assert r["start_date"] == newsale and r["history"][-1]["reason"] == "Invoice date misread"
     assert r["history"][-1]["changes"]["expiry_date"] == [
