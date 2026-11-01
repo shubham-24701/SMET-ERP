@@ -22,6 +22,8 @@ from app import (
     inventory,
     jobs,
     masters,
+    messaging,
+    notify,
     procurement,
     projects,
     public,
@@ -175,6 +177,8 @@ for module in (
     service,
     codes,
     public,
+    messaging,
+    notify,
 ):
     api.include_router(module.router)
 

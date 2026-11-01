@@ -71,6 +71,8 @@ class User(Base):
     active: Mapped[bool] = mapped_column(Boolean, server_default=true())
     must_change_password: Mapped[bool] = mapped_column(Boolean, server_default=false())
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    notify_email: Mapped[bool] = mapped_column(Boolean, server_default=false())  # Phase 7
+    muted_events: Mapped[list[str]] = mapped_column(ARRAY(String(40)), server_default="{}")
     version: Mapped[int] = mapped_column(Integer, server_default="1")
     created_at: Mapped[datetime] = _ts()
 
@@ -1258,6 +1260,7 @@ class WarrantyRegistration(Base):
     customer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("parties.id"))
     customer_name: Mapped[str] = mapped_column(String(160), server_default="")
     customer_contact: Mapped[str] = mapped_column(String(160), server_default="")
+    updates_consent: Mapped[bool] = mapped_column(Boolean, server_default=false())  # Phase 7
     address: Mapped[str] = mapped_column(Text, server_default="")
     distributor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("parties.id"))
     distributor_name: Mapped[str] = mapped_column(String(160), server_default="")
@@ -1325,6 +1328,7 @@ class ServiceRequest(Base):
     customer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("parties.id"), index=True)
     contact_name: Mapped[str] = mapped_column(String(160), server_default="")
     contact_phone: Mapped[str] = mapped_column(String(60), server_default="")
+    updates_consent: Mapped[bool] = mapped_column(Boolean, server_default=false())  # Phase 7
     issue: Mapped[str] = mapped_column(Text)
     priority: Mapped[str] = mapped_column(
         String(8), server_default="normal"
@@ -1380,3 +1384,106 @@ class MaintenanceAlert(Base):
     created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = _ts()
     version: Mapped[int] = mapped_column(Integer, server_default="1")
+
+
+# ======================= Phase 7: notifications and messages =======================
+
+
+class Notification(Base):
+    """An in-system message for one person. `key` makes each event land once per person."""
+
+    __tablename__ = "notifications"
+    __table_args__ = (
+        UniqueConstraint("user_id", "key"),
+        Index("ix_notifications_inbox", "user_id", "read_at", "created_at"),
+    )
+    id: Mapped[uuid.UUID] = _id()
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    event: Mapped[str] = mapped_column(String(40))
+    title: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str] = mapped_column(Text, server_default="")
+    link: Mapped[str] = mapped_column(String(200), server_default="")
+    key: Mapped[str] = mapped_column(String(200))
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _ts()
+
+
+class MessageTemplate(Base):
+    """The wording of one event on one channel. Fields in braces, e.g. {number}, are filled in."""
+
+    __tablename__ = "message_templates"
+    __table_args__ = (UniqueConstraint("event", "channel"),)
+    id: Mapped[uuid.UUID] = _id()
+    event: Mapped[str] = mapped_column(String(40))
+    channel: Mapped[str] = mapped_column(String(10))  # in_app|email|sms|whatsapp
+    subject: Mapped[str] = mapped_column(String(200), server_default="")
+    body: Mapped[str] = mapped_column(Text)
+    # WhatsApp: the template approved by Meta; the body's fields are its parameters, in order.
+    provider_template: Mapped[str] = mapped_column(String(120), server_default="")
+    language: Mapped[str] = mapped_column(String(10), server_default="en")
+    active: Mapped[bool] = mapped_column(Boolean, server_default=true())
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+    updated_at: Mapped[datetime] = _ts()
+
+
+class MessageProvider(Base):
+    """How one external channel sends. The secret (password, token) is stored encrypted."""
+
+    __tablename__ = "message_providers"
+    channel: Mapped[str] = mapped_column(String(10), primary_key=True)  # email|sms|whatsapp
+    provider: Mapped[str] = mapped_column(String(20))  # smtp|twilio|meta_cloud
+    mode: Mapped[str] = mapped_column(
+        String(10), server_default="off"
+    )  # off|mock|sandbox|production
+    settings: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    secret_ciphertext: Mapped[str | None] = mapped_column(Text)
+    test_recipient: Mapped[str] = mapped_column(
+        String(160), server_default=""
+    )  # sandbox: all go here
+    last_test_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_test_ok: Mapped[bool | None] = mapped_column(Boolean)
+    last_test_message: Mapped[str] = mapped_column(String(300), server_default="")
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+    updated_at: Mapped[datetime] = _ts()
+
+
+class MessageDelivery(Base):
+    """One external message: queued, then sent (or blocked, skipped, failed) by the worker."""
+
+    __tablename__ = "message_deliveries"
+    id: Mapped[uuid.UUID] = _id()
+    key: Mapped[str] = mapped_column(String(260), unique=True)  # never the same message twice
+    event: Mapped[str] = mapped_column(String(40), index=True)
+    channel: Mapped[str] = mapped_column(String(10))
+    provider: Mapped[str] = mapped_column(String(20))
+    mode: Mapped[str] = mapped_column(String(10))
+    recipient: Mapped[str] = mapped_column(String(160))  # shown masked
+    sent_to: Mapped[str] = mapped_column(
+        String(160), server_default=""
+    )  # sandbox: the test address
+    user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    entity_type: Mapped[str] = mapped_column(String(40), server_default="")
+    entity_id: Mapped[str] = mapped_column(String(64), server_default="")
+    subject: Mapped[str] = mapped_column(String(200), server_default="")
+    body: Mapped[str] = mapped_column(Text, server_default="")
+    params: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    # queued|sending|sent|delivered|failed|blocked|skipped|unknown
+    status: Mapped[str] = mapped_column(String(10), server_default="queued", index=True)
+    attempts: Mapped[int] = mapped_column(Integer, server_default="0")
+    provider_ref: Mapped[str] = mapped_column(String(120), server_default="")
+    error: Mapped[str] = mapped_column(String(300), server_default="")
+    created_at: Mapped[datetime] = _ts(index=True)
+    updated_at: Mapped[datetime] = _ts()
+
+
+class MessageOptOut(Base):
+    """An address that must not receive external messages on a channel."""
+
+    __tablename__ = "message_opt_outs"
+    channel: Mapped[str] = mapped_column(String(10), primary_key=True)
+    address: Mapped[str] = mapped_column(String(160), primary_key=True)  # normalised
+    reason: Mapped[str] = mapped_column(String(300), server_default="")
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _ts()

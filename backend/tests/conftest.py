@@ -14,6 +14,8 @@ os.environ |= {
     "CODES_KEY": base64.urlsafe_b64encode(
         b"test-only " * 3 + b"!!"
     ).decode(),  # obviously not a real key
+    "SECRETS_KEY": base64.urlsafe_b64encode(b"test-secrets " * 2 + b"!!!!!!").decode(),
+    "EXTERNAL_SENDS": "off",
 }
 
 import pytest  # noqa: E402

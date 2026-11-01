@@ -16,8 +16,10 @@ PUBLIC = {
     ("POST", "/api/v1/auth/logout"), ("GET", "/api/v1/public/verify/{token}"),
     ("GET", "/api/v1/public/lookup"), ("POST", "/api/v1/public/registrations"), ("POST", "/api/v1/public/service-requests"),
 }  # fmt: skip
-# Need a session but no permission: your own profile and password.
-SELF = {("GET", "/api/v1/auth/me"), ("POST", "/api/v1/auth/password")}
+# Need a session but no permission: your own profile, password and notifications.
+SELF = {("GET", "/api/v1/auth/me"), ("POST", "/api/v1/auth/password"), ("GET", "/api/v1/notifications"),
+        ("POST", "/api/v1/notifications/read"), ("GET", "/api/v1/notifications/preferences"),
+        ("PUT", "/api/v1/notifications/preferences")}  # fmt: skip
 ZERO = "00000000-0000-0000-0000-000000000000"
 
 

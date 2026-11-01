@@ -33,6 +33,7 @@ from app.models import (
     PurchaseOrderLine,
     PurchaseRequestLine,
     Reservation,
+    Role,
     Serial,
     StockBalance,
     StockMove,
@@ -165,7 +166,23 @@ RULE_DEFAULTS: dict = {
     "public_warranty_dates": False,
     "amc_renewal_notice_days": 60,  # AMCs ending within this many days are listed for renewal (21c)
     "code_retention_days": 365,  # reset codes are erased this long after their alert closes
+    # Phase 7 reminders (assumption A31): maintenance visits this many days ahead are announced; a
+    # reminder about something still late repeats every reminder_repeat_days; once it is
+    # escalate_after_days late it also goes to the escalation role (both null = no escalation).
+    "amc_visit_notice_days": 14,
+    "reminder_repeat_days": 7,
+    "escalate_after_days": None,
+    "escalation_role_id": None,
+    "phone_country_code": "971",  # for numbers written locally, e.g. 050 123 4567
 }
+
+
+NULLABLE_RULES = (
+    "po_auto_approve_up_to",
+    "quote_auto_approve_up_to",
+    "escalate_after_days",
+    "escalation_role_id",
+)
 
 
 def rules(db: Session) -> dict:
@@ -197,6 +214,11 @@ class RulesPatch(BaseModel):
     public_warranty_dates: bool | None = None
     amc_renewal_notice_days: int | None = Field(default=None, ge=1, le=365)
     code_retention_days: int | None = Field(default=None, ge=1, le=3650)
+    amc_visit_notice_days: int | None = Field(default=None, ge=1, le=90)
+    reminder_repeat_days: int | None = Field(default=None, ge=1, le=90)
+    escalate_after_days: int | None = Field(default=None, ge=1, le=365)
+    escalation_role_id: uuid.UUID | None = None
+    phone_country_code: str | None = Field(default=None, pattern=r"^[1-9]\d{0,3}$")
     reason: Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)] = ""
 
 
@@ -214,9 +236,11 @@ def update_rules(body: RulesPatch, p: require("settings.configure"), db: DB) -> 
     after = dict(before)
     for k in body.model_fields_set - {"version", "reason"}:
         v = getattr(body, k)
-        if v is None and k not in ("po_auto_approve_up_to", "quote_auto_approve_up_to"):
+        if v is None and k not in NULLABLE_RULES:
             continue
-        after[k] = str(v) if isinstance(v, Decimal) else v
+        if k == "escalation_role_id" and v is not None and db.get(Role, v) is None:
+            raise field_error("escalation_role_id", "Choose one of the roles")
+        after[k] = str(v) if isinstance(v, Decimal | uuid.UUID) else v
     c.rules = {k: after[k] for k in RULE_DEFAULTS}
     c.version += 1
     record(

@@ -104,6 +104,7 @@ def public_registration(
     purchase_date: Annotated[date, Form()],
     address: Annotated[str, Form(max_length=2000)] = "",
     seller: Short = "",
+    updates: Annotated[bool, Form()] = False,  # "tell me the outcome at this contact"
     website: Short = "",  # left empty by people; filled by bots
     proof: Annotated[UploadFile | None, File()] = None,
 ) -> dict:
@@ -123,7 +124,7 @@ def public_registration(
         )
         return RECEIVED
     r = WarrantyRegistration(number=next_number(db, "warranty"), serial_id=s.id, route="public",
-                             customer_name=customer_name.strip(), customer_contact=contact.strip(), address=address.strip(),
+                             customer_name=customer_name.strip(), customer_contact=contact.strip(), updates_consent=updates, address=address.strip(),
                              distributor_name=seller.strip(), sale_date=purchase_date, notes="Submitted on the public form")  # fmt: skip
     try:
         with db.begin_nested():
@@ -161,6 +162,7 @@ class PublicSr(BaseModel):
     phone: Annotated[str, StringConstraints(strip_whitespace=True, min_length=5, max_length=60)]
     issue: Annotated[str, StringConstraints(strip_whitespace=True, min_length=10, max_length=4000)]
     preferred_visit: Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)] = ""
+    updates: bool = False  # "send me status updates at this number"
     website: Annotated[str, StringConstraints(max_length=160)] = ""
 
 
@@ -174,7 +176,7 @@ def public_service_request(body: PublicSr, db: DB) -> dict:
                   .where(Serial.serial == body.serial.upper(), Item.kind.in_(("battery_model", "battery_unit")))) if body.serial else None  # fmt: skip
     target = _target(db, s, None, None) if s else {}
     sr = ServiceRequest(number=next_number(db, "service_request"), source="public", reported_serial=body.serial.upper(),
-                        contact_name=body.name, contact_phone=body.phone, issue=body.issue,
+                        contact_name=body.name, contact_phone=body.phone, updates_consent=body.updates, issue=body.issue,
                         preferred_visit=body.preferred_visit, **target)  # fmt: skip
     db.add(sr)
     db.flush()

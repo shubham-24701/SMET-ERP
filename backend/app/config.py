@@ -1,6 +1,7 @@
 import tomllib
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -38,6 +39,11 @@ class Settings(BaseSettings):
     # Encrypts maintenance reset codes (a Fernet key; `python -m app.setup_db` writes one). Losing it
     # makes recorded codes unreadable, so it is backed up with .env, never rotated by setup.
     codes_key: str = ""
+    # Encrypts message-provider credentials (passwords, tokens); written by setup like CODES_KEY.
+    secrets_key: str = ""
+    # The most any message channel may do: off (nothing leaves the server), sandbox (test recipients
+    # only) or production. Changed only here, by whoever runs the server, never from the screen.
+    external_sends: Literal["off", "sandbox", "production"] = "off"
 
     @property
     def owner_url(self) -> str:
