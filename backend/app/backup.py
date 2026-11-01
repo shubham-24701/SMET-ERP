@@ -16,6 +16,7 @@ Needs the PostgreSQL client tools (pg_dump, pg_restore) on the PATH.
 
 import argparse
 import hashlib
+import os
 import shutil
 import subprocess  # noqa: S404 - runs the PostgreSQL tools with fixed arguments, no shell
 import sys
@@ -23,12 +24,20 @@ import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 
+import psycopg
+from sqlalchemy.engine import make_url
+
 from app.config import get_settings
+from app.setup_db import app_rights
 
 
-def libpq(url: str) -> str:
-    """The SQLAlchemy URL as the PostgreSQL tools take it."""
-    return url.replace("postgresql+psycopg://", "postgresql://", 1)
+def libpq(url: str) -> tuple[str, dict]:
+    """The address as the PostgreSQL tools take it, with the password moved to PGPASSWORD so it
+    never shows in the process list."""
+    u = make_url(url)
+    env = os.environ | ({"PGPASSWORD": u.password} if u.password else {})
+    plain = u.set(drivername="postgresql", password=None).render_as_string(hide_password=False)
+    return plain, env
 
 
 def tool(name: str) -> str:
@@ -58,8 +67,9 @@ def create(
     folder.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     dump = folder / f"smet-{stamp}.dump"
-    subprocess.run([tool("pg_dump"), "--format=custom", "--file", str(dump), libpq(url or get_settings().owner_url)],  # noqa: S603
-                   check=True, timeout=3600)  # fmt: skip
+    address, env = libpq(url or get_settings().owner_url)
+    subprocess.run([tool("pg_dump"), "--format=custom", "--file", str(dump), address],  # noqa: S603
+                   check=True, timeout=3600, env=env)  # fmt: skip
     _seal(dump)
     files_dir = files_dir or Path(get_settings().files_dir)
     archive = None
@@ -92,8 +102,14 @@ def restore(
     dump: Path, url: str | None = None, files: Path | None = None, files_dir: Path | None = None
 ) -> None:
     verify(dump)
+    owner = url or get_settings().owner_url
+    address, env = libpq(owner)
     subprocess.run([tool("pg_restore"), "--clean", "--if-exists", "--single-transaction", "--exit-on-error",  # noqa: S603
-                    "--dbname", libpq(url or get_settings().owner_url), str(dump)], check=True, timeout=3600)  # fmt: skip
+                    "--dbname", address, str(dump)], check=True, timeout=3600, env=env)  # fmt: skip
+    # The restore re-creates the tables with default rights; take the history rights away again.
+    with psycopg.connect(make_url(owner).set(drivername="postgresql").render_as_string(hide_password=False),
+                         autocommit=True) as conn:  # fmt: skip
+        app_rights(conn)
     if files:
         target = files_dir or Path(get_settings().files_dir)
         target.mkdir(parents=True, exist_ok=True)

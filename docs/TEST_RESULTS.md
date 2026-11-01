@@ -2,6 +2,21 @@
 
 Every result below was produced by running the command shown. Results that have not run yet say so.
 
+## 2026-11-01 · Phase 8 (0.8.0) · local and CI
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Backend | ruff, `uv run pytest -q` | clean; **181 passed**, including `test_phase8.py` (backup round trip with real `pg_dump`/`pg_restore`, scanner refusal and failure, S3 against a stand-in client, trusted proxies, retention, system health, SMET's date, production HTTPS) and the security regressions below |
+| Frontend | `tsc -b`, oxlint, `vitest run` | clean; 7 passed |
+| Browser journeys | `npx playwright test` (local Chromium) | **8 passed**, with the CSRF token now replaced at sign-in |
+| Load and concurrency | `uv run python -m tests.load_check` (400 items, 3,000 orders, 20,000 serials, 60,000 stock moves, 3,000 service requests, 30,000 notifications) | report pages 18–117 ms median; dashboards 255 ms median, 422 ms p95; 8 people at once: 160 requests in about 9 s, p95 1.4 s; two saves of the same record at once: [200, 409] |
+| Regression check | each security test against the code before its fix | M2, M3, L1 and L4 tests failed before and pass after; M1 was seen failing on the restored test database and passes after |
+| CI | GitHub Actions on `phase-8` | see below |
+
+The full security review table is in [security/SECURITY_CHECKLIST_111.md](security/SECURITY_CHECKLIST_111.md#independent-security-review-of-the-whole-app-2026-11-01).
+The load check ran in the cloud workspace (shared CPU), not on SMET's hardware: treat the numbers
+as a floor to compare against, not a capacity promise.
+
 ## 2026-11-01 · Customization (0.7.0) · local and CI
 
 | Check | Command | Result |

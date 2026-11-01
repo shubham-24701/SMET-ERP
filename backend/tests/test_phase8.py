@@ -12,12 +12,12 @@ import pytest
 from sqlalchemy import select, update
 
 from app import backup, files, main
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.db import SessionLocal
 from app.masters import company_today
 from app.models import MessageDelivery, Notification, StoredFile, User, utcnow
 from app.notify import purge_old
-from tests import test_installation
+from tests import test_installation, test_platform
 from tests.conftest import API, wipe
 from tests.ops import item, ok, supplier
 from tests.test_customization import po_body
@@ -48,6 +48,9 @@ def test_a_backup_restores_the_data_and_the_files(user_with, tmp_path):
         ok(buyer.get(f"{API}/purchase-orders/{po['id']}"))["number"] == po["number"]
     )  # sessions came back too
     assert (stored / "ab" / "abc").read_bytes() == b"evidence"
+    test_platform.test_the_app_login_cannot_change_or_delete_audit_events(
+        None
+    )  # the restore gave no rights back
     dump.write_bytes(dump.read_bytes() + b"x")  # damaged after the fact: refused
     with pytest.raises(SystemExit, match="checksum"):
         backup.verify(dump)
@@ -115,9 +118,9 @@ def test_files_can_live_in_an_s3_bucket(site, monkeypatch):
 
 
 def test_the_client_address_is_believed_only_from_trusted_proxies(monkeypatch):
-    req = lambda peer, xff: SimpleNamespace(
-        client=SimpleNamespace(host=peer), headers={"x-forwarded-for": xff}
-    )  # noqa: E731
+    def req(peer, xff):
+        return SimpleNamespace(client=SimpleNamespace(host=peer), headers={"x-forwarded-for": xff})
+
     monkeypatch.setattr(main.settings, "trusted_proxies", ["10.0.0.5"])
     assert (
         main.client_ip(req("203.0.113.9", "1.2.3.4")) == "203.0.113.9"
@@ -164,3 +167,14 @@ def test_dates_are_smet_s_dates_not_the_server_s(admin):
         db.execute(update(main.Company).values(timezone="Pacific/Kiritimati"))  # UTC+14
         db.commit()
         assert company_today(db) == datetime.now(ZoneInfo("Pacific/Kiritimati")).date()
+
+
+def test_production_needs_https_and_https_gets_hsts(admin, monkeypatch):
+    """L5: production with insecure cookies refused at start; HTTPS answers carry HSTS."""
+    with pytest.raises(ValueError, match="COOKIE_SECURE"):
+        Settings(app_env="production", cookie_secure=False)
+    assert "strict-transport-security" not in admin.get(f"{API}/health/live").headers
+    monkeypatch.setattr(main.settings, "cookie_secure", True)
+    assert (
+        admin.get(f"{API}/health/live").headers["strict-transport-security"] == "max-age=31536000"
+    )

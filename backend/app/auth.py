@@ -40,6 +40,9 @@ _HASHING = threading.BoundedSemaphore(4)  # each check uses 64 MiB; a login burs
 # more than one API process.
 _attempts: dict[str, list[float]] = defaultdict(list)
 LOGIN_LIMIT, LOGIN_WINDOW_S, CLIENT_LOGIN_LIMIT = 5, 60, 30
+# Per account over all addresses: high enough that one address (5 a minute) can't lock anyone out,
+# low enough that guessing from many addresses stays slow.
+ACCOUNT_LIMIT, ACCOUNT_WINDOW_S = 100, 900
 MAX_KEYS = 10_000
 
 
@@ -130,6 +133,16 @@ def start_session(db: Session, response: Response, user: User) -> None:
         SESSION_COOKIE, token, max_age=s.session_ttl_hours * 3600, httponly=True,
         samesite="lax", secure=s.cookie_secure, path="/",
     )  # fmt: skip
+    set_csrf(
+        response, secrets.token_urlsafe(32)
+    )  # a new one too: a token seen before sign-in is useless after
+
+
+def set_csrf(response: Response, token: str) -> None:
+    # Readable by JS on purpose (double-submit pattern); the session cookie stays HttpOnly.
+    response.set_cookie(
+        CSRF_COOKIE, token, samesite="lax", secure=get_settings().cookie_secure, path="/"
+    )
 
 
 def _signed_in(request: Request, db: Annotated[Session, Depends(get_db)]) -> Principal:
@@ -212,10 +225,7 @@ def me_payload(p: Principal, db: Session) -> dict:
 @router.get("/csrf")
 def csrf(request: Request, response: Response) -> dict:
     token = request.cookies.get(CSRF_COOKIE) or secrets.token_urlsafe(32)
-    # Readable by JS on purpose (double-submit pattern); the session cookie stays HttpOnly.
-    response.set_cookie(
-        CSRF_COOKIE, token, samesite="lax", secure=get_settings().cookie_secure, path="/"
-    )
+    set_csrf(response, token)
     return {"csrf_token": token}
 
 
@@ -257,8 +267,10 @@ def login(body: LoginIn, request: Request, response: Response, db: DB) -> dict:
     client = request_info.get().get("ip") or "?"  # the real address, also behind a trusted proxy
     message = "Too many sign-in attempts. Try again in a minute."
     rate_limit(f"login|{client}", CLIENT_LOGIN_LIMIT, LOGIN_WINDOW_S, message)
-    # Per account too, whatever the address: one address can't guess one password many times.
-    rate_limit(f"login|{email}", LOGIN_LIMIT, LOGIN_WINDOW_S, message)
+    # Per account and address: one address can't guess one password many times, and can't lock
+    # the owner of the account out from elsewhere either.
+    rate_limit(f"login|{email}|{client}", LOGIN_LIMIT, LOGIN_WINDOW_S, message)
+    rate_limit(f"login|{email}", ACCOUNT_LIMIT, ACCOUNT_WINDOW_S, message)
     user = db.scalar(select(User).where(User.email == email))
     try:
         with _HASHING:
@@ -276,7 +288,7 @@ def login(body: LoginIn, request: Request, response: Response, db: DB) -> dict:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This account has been deactivated")
     if hasher.check_needs_rehash(user.password_hash):
         user.password_hash = hasher.hash(body.password)
-    _attempts.pop(f"login|{email}", None)
+    _attempts.pop(f"login|{email}|{client}", None)
     record(db, user, "auth.login", "user", user.id)
     start_session(db, response, user)
     roles, perms = load_access(db, user.id)
@@ -289,6 +301,7 @@ def logout(request: Request, response: Response, db: DB) -> None:
         db.execute(delete(AuthSession).where(AuthSession.token_hash == hash_token(token)))
         db.commit()
     response.delete_cookie(SESSION_COOKIE, path="/")
+    response.delete_cookie(CSRF_COOKIE, path="/")
 
 
 @router.get("/me")

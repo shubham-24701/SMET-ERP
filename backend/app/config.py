@@ -3,6 +3,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -60,6 +61,12 @@ class Settings(BaseSettings):
     trusted_proxies: list[str] = []
     # Where `python -m app.backup create` writes; System health warns when the newest is old.
     backup_dir: str = str(BACKEND_DIR / "backups")
+
+    @model_validator(mode="after")
+    def _production_is_https(self):
+        if self.app_env == "production" and not self.cookie_secure:
+            raise ValueError("APP_ENV=production needs COOKIE_SECURE=true (serve it over HTTPS)")
+        return self
 
     @property
     def owner_url(self) -> str:

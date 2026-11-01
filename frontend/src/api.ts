@@ -90,6 +90,7 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
   } catch {
     throw new ApiError(0, 'Cannot reach the server. Is the backend running?')
   }
+  if (method !== 'GET' && path.startsWith('/auth/')) csrf = null // sign-in, setup and sign-out replace the token
   if (res.status === 204) return undefined as T
   const data: unknown = await res.json().catch(() => null)
   if (!res.ok) {

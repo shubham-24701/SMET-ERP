@@ -24,7 +24,7 @@ from alembic.config import Config  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import select, text  # noqa: E402
 
-from app.auth import _attempts, hasher  # noqa: E402
+from app.auth import CSRF_COOKIE, _attempts, hasher  # noqa: E402
 from app.config import BACKEND_DIR, get_settings  # noqa: E402
 from app.db import Base, SessionLocal, make_engine  # noqa: E402
 from app.main import app  # noqa: E402
@@ -73,8 +73,16 @@ def clean_db():
     wipe()
 
 
-def new_client() -> TestClient:
-    c = TestClient(app)
+def new_client(**kw) -> TestClient:
+    """A browser stand-in: it sends the CSRF cookie's value as the header, also after sign-in
+    replaces it, as the web app does."""
+    c = TestClient(app, **kw)
+
+    def follow(r):
+        if token := r.cookies.get(CSRF_COOKIE):
+            c.headers["X-CSRF-Token"] = token
+
+    c.event_hooks["response"].append(follow)
     c.headers["X-CSRF-Token"] = c.get(f"{API}/auth/csrf").json()["csrf_token"]
     return c
 

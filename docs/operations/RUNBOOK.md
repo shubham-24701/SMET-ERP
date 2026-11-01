@@ -2,6 +2,13 @@
 
 For whoever runs SMET Operations day to day. Commands run in `backend/` unless said otherwise.
 
+## Before going live
+
+- Run first-time setup (company and first administrator) **before** the server is reachable from
+  outside: until it is done, whoever opens the site first becomes the administrator.
+- Set `APP_ENV=production` and `COOKIE_SECURE=true` behind HTTPS; the app refuses to start with
+  the first and not the second. Set `TRUSTED_PROXIES` to the reverse proxy's address.
+
 ## Every day
 
 - **Backup.** Schedule `uv run python -m app.backup create` once a night (Windows Task Scheduler or
@@ -28,6 +35,7 @@ For whoever runs SMET Operations day to day. Commands run in `backend/` unless s
 1. Stop the app. Keep the damaged database if you can (rename it) for the post mortem.
 2. Restore the newest good backup: `uv run python -m app.backup restore <dump> --files <zip> --yes`.
 3. Put back `.env` (same keys). `uv run alembic upgrade head` if the backup is from an older version.
+   The restore re-applies the app login's database rights itself (history stays append-only).
 4. Start the app, check System health, tell users which period may be missing (since the backup).
 
 ## When something goes wrong (incident)

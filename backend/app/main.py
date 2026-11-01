@@ -164,6 +164,8 @@ async def request_context(request: Request, call_next):
         response = JSONResponse({"detail": f"The server had a problem (ref {request_id})."}, 500)
     response.headers["X-Request-ID"] = request_id
     docs = request.url.path.startswith(("/api/v1/docs", "/api/v1/openapi.json"))
+    if settings.cookie_secure:  # served over HTTPS: browsers keep to it for a year
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
     for name, value in SECURITY_HEADERS.items():
         if not (docs and name == "Content-Security-Policy"):  # the docs page loads Swagger UI
             response.headers.setdefault(name, value)

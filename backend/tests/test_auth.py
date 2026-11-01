@@ -7,6 +7,7 @@ from app.auth import SESSION_COOKIE
 from app.db import SessionLocal
 from app.models import AuditEvent, AuthSession, User, utcnow
 from tests.conftest import ADMIN, API, PASSWORD, new_client, signed_in
+from tests.ops import ok
 
 
 def test_first_run_setup_creates_the_admin_and_signs_in(client):
@@ -60,6 +61,11 @@ def test_login_is_rate_limited_per_account(admin):
             f"{API}/auth/login", json={"email": ADMIN["email"], "password": PASSWORD}
         ).status_code
         == 429
+    )
+    # ...but only from that address: a stranger's guessing doesn't lock the owner out elsewhere.
+    elsewhere = new_client(client=("198.51.100.20", 50000))
+    assert ok(
+        elsewhere.post(f"{API}/auth/login", json={"email": ADMIN["email"], "password": PASSWORD})
     )
 
 
@@ -128,3 +134,14 @@ def test_deactivated_user_is_signed_out_and_cannot_sign_in(admin, user_with):
     assert r.status_code == 403
     with SessionLocal() as db:
         assert db.scalar(select(User.active).where(User.email == "bob@example.test")) is False
+
+
+def test_signing_in_replaces_the_csrf_token(admin):
+    """L4: a token planted or seen before sign-in must not work for the signed-in session."""
+    c = new_client()
+    before = c.headers["X-CSRF-Token"]
+    ok(c.post(f"{API}/auth/login", json={"email": ADMIN["email"], "password": PASSWORD}))
+    assert c.headers["X-CSRF-Token"] != before
+    r = c.post(f"{API}/roles", json={"name": "Night shift"}, headers={"X-CSRF-Token": before})
+    assert r.status_code == 403
+    assert ok(c.post(f"{API}/roles", json={"name": "Night shift"}), 201)

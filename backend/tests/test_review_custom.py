@@ -185,3 +185,16 @@ def test_open_is_not_a_status_name(admin):
         },
     )
     assert r.status_code == 422
+
+
+def test_a_field_label_can_t_become_a_spreadsheet_formula(admin, user_with):
+    """Security L1: export headings are admin-typed labels, so they are neutralised like cells."""
+    buyer = user_with(perms=BUYER + ["reports.purchase_orders", "reports.export"])
+    field(admin, "purchase_order", '=HYPERLINK("http://evil")')
+    buyer.post(f"{API}/purchase-orders", json=po_body(supplier(buyer), item(buyer, "CELL")))
+    head = (
+        buyer.get(f"{API}/reports/purchase_orders/export")
+        .content.decode("utf-8-sig")
+        .splitlines()[0]
+    )
+    assert "'=HYPERLINK" in head

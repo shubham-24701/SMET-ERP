@@ -18,8 +18,17 @@ New
   backups and the server clock.
 - Performance and concurrency check (`tests/load_check.py`) with a few years' synthetic volume.
 
+Security fixes (independent review, no critical or high findings)
+- A restore puts back the app login's limits on history tables (before, it lifted them).
+- Wrong passwords from one address no longer lock the account out for everyone else.
+- The person who submitted a warranty can't correct its dates after approval.
+- Sign-in replaces the CSRF token; spreadsheet downloads neutralise column headings too.
+- `APP_ENV=production` refuses to start without `COOKIE_SECURE=true`; HTTPS answers carry HSTS.
+- The database owner's password no longer appears in the process list during backups.
+
 Upgrade
 - `uv run alembic upgrade head` (migration 0011). Schedule the nightly backup (runbook).
+- Run first-time setup before the server is reachable from outside.
 
 ## 0.7.0 · Customization · 2026-11-01
 

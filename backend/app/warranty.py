@@ -583,6 +583,8 @@ def correct(reg_id: uuid.UUID, body: CorrectIn, p: require("warranty.correct"), 
         for k, v in body.model_dump(exclude={"version", "reason"}).items()
         if k in body.model_fields_set and v is not None
     }
+    if set(data) & set(EVENTS.values()):  # dates set the term: same four-eyes rule as approving
+        _decider(db, p, r)
     if r.route == "replacement" and set(data) & set(EVENTS.values()):
         raise field_error(
             "reason",

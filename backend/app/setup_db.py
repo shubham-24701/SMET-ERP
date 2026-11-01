@@ -47,6 +47,21 @@ HISTORY_RIGHTS = (
 )
 
 
+def app_rights(conn) -> None:
+    """The app login's rights on every table that exists now: read and write, except where the
+    migrations take rights away (history and the schema record). Run by setup, and after a restore,
+    which re-creates tables and would otherwise give the app login back what it must not have."""
+    # Tables made before this ran (a re-run on an existing database, or a restore)
+    conn.execute(sql.SQL("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO {}").format(
+        sql.Identifier(APP)))  # fmt: skip
+    conn.execute(sql.SQL("GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {}").format(
+        sql.Identifier(APP)))  # fmt: skip
+    for table, rights in HISTORY_RIGHTS:
+        if conn.execute("SELECT to_regclass(%s)", (f"public.{table}",)).fetchone()[0]:
+            conn.execute(sql.SQL("REVOKE " + rights + " ON {} FROM {}").format(
+                sql.Identifier(table), sql.Identifier(APP)))  # fmt: skip
+
+
 def url(user: str, password: str, host: str, port: int, db: str) -> str:
     return f"postgresql+psycopg://{user}:{password}@{host}:{port}/{db}"
 
@@ -81,16 +96,7 @@ def setup(admin_url: str, host: str, port: int) -> dict[str, str]:
             ):
                 conn.execute(sql.SQL("ALTER DEFAULT PRIVILEGES FOR ROLE {owner} IN SCHEMA public " + stmt).format(
                     owner=sql.Identifier(OWNER), app=sql.Identifier(APP)))  # fmt: skip
-            # Tables made before this ran (a re-run on an existing database)
-            conn.execute(sql.SQL("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO {}").format(
-                sql.Identifier(APP)))  # fmt: skip
-            conn.execute(sql.SQL("GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {}").format(
-                sql.Identifier(APP)))  # fmt: skip
-            # ...except where the migrations take rights away again: history and the schema record.
-            for table, rights in HISTORY_RIGHTS:
-                if conn.execute("SELECT to_regclass(%s)", (f"public.{table}",)).fetchone()[0]:
-                    conn.execute(sql.SQL("REVOKE " + rights + " ON {} FROM {}").format(
-                        sql.Identifier(table), sql.Identifier(APP)))  # fmt: skip
+            app_rights(conn)
     values = {}
     for db, (app_key, owner_key) in DATABASES.items():
         values[app_key] = url(APP, pw[APP], host, port, db)
