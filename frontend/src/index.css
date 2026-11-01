@@ -337,6 +337,9 @@ body > #root > .page-state { margin: 80px auto; }
 /* ---------- overview, settings and system blocks ---------- */
 .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap); align-items: start; }
 .grid-2 > .panel, .panel-wide { max-inline-size: none; margin: 0; }
+.grid-3 { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--gap); align-items: start; margin-block-end: var(--gap); }
+.grid-3 > .panel { max-inline-size: none; margin: 0; }
+.grid-3 > .panel-wide { grid-column: 1 / -1; }
 .panel-wide { margin-block-end: var(--gap); }
 .panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-block-end: 12px; }
 .panel-head h2 { margin: 0; }
@@ -466,3 +469,26 @@ h3.sub { font-size: var(--fs-body); font-weight: 600; margin: 16px 0 8px; }
 .trap { position: absolute; inset-inline-start: -9999px; inline-size: 1px; block-size: 1px; overflow: hidden; }
 .clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .code-box { font: 600 1.4rem/1.3 var(--mono, 'IBM Plex Mono', monospace); letter-spacing: 0.04em; padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--r-control); background: var(--raised); overflow-wrap: anywhere; user-select: all; }
+
+/* ---------- Phase 7: notifications, messages, reports, search ---------- */
+.search input { inline-size: 100%; block-size: 32px; margin-block-start: 12px; }
+.bell { display: flex; align-items: center; gap: 10px; block-size: 32px; padding: 0 8px; margin-block-start: 8px; border-radius: var(--r-control); color: var(--muted); text-decoration: none; }
+.bell:hover { color: var(--text); background: var(--raised); }
+.bell-count { margin-inline-start: auto; min-inline-size: 20px; padding: 0 6px; border-radius: 10px; background: var(--primary); color: var(--on-primary); font-size: var(--fs-small); line-height: 20px; text-align: center; font-variant-numeric: tabular-nums; }
+.inbox { list-style: none; padding: 0; }
+.inbox li { display: flex; justify-content: space-between; gap: 16px; padding: 12px 16px; }
+.inbox li + li { border-block-start: 1px solid var(--rule); }
+.inbox li > span:first-child { display: grid; gap: 2px; min-inline-size: 0; }
+.inbox li[data-unread] strong { font-weight: 600; }
+.inbox li:not([data-unread]) strong { font-weight: 400; }
+.inbox li[data-unread] { box-shadow: inset 3px 0 0 var(--primary); }
+.inbox-side { display: flex; align-items: center; gap: 8px; flex: none; }
+.tabs { display: flex; gap: 4px; border-block-end: 1px solid var(--border); margin-block-end: var(--gap); overflow-x: auto; }
+.tab { background: none; border: 0; border-block-end: 2px solid transparent; padding: 8px 12px; font: inherit; color: var(--muted); cursor: pointer; white-space: nowrap; }
+.tab.active { color: var(--text); border-block-end-color: var(--primary); }
+.template-preview { background: var(--raised); border: 1px solid var(--border); border-radius: var(--r-card); padding: 12px 16px; margin-block: 12px; }
+.table.report td { white-space: nowrap; }
+.link-btn { text-align: start; }
+.table.report td:first-child { position: sticky; inset-inline-start: 0; background: var(--surface); }
+@media (max-width: 720px) { .inbox li { flex-direction: column; } }
+.panel h3 + .link-list { margin-block-start: 8px; }

@@ -116,7 +116,7 @@ function NewSr({ onDone, serial }: { onDone: (sr: Sr) => void; serial?: string }
       const fd = new FormData(e.currentTarget)
       const s = (k: string) => String(fd.get(k) ?? '')
       void action.run('add', async () => onDone(await api<Sr>('/service-requests', { method: 'POST', body: { serial: s('serial').trim() || null, contact_name: s('contact_name'),
-        contact_phone: s('contact_phone'), issue: s('issue'), priority: s('priority'), preferred_visit: s('preferred_visit') } })))
+        contact_phone: s('contact_phone'), updates_consent: fd.get('updates') === 'on', issue: s('issue'), priority: s('priority'), preferred_visit: s('preferred_visit') } })))
     }}>
       <Field label="Battery serial" name="serial" defaultValue={serial} maxLength={60} autoComplete="off" hint="The bank and site are filled in from it" />
       <TextareaField label="What is wrong" name="issue" required minLength={3} maxLength={4000} rows={3} />
@@ -125,6 +125,7 @@ function NewSr({ onDone, serial }: { onDone: (sr: Sr) => void; serial?: string }
         <Field label="Contact" name="contact_name" maxLength={160} />
         <Field label="Phone" name="contact_phone" type="tel" maxLength={60} />
       </div>
+      <label className="check"><input type="checkbox" name="updates" /> <span>The contact agreed to status updates at this number</span></label>
       <Field label="Preferred visit" name="preferred_visit" maxLength={200} />
       <FormError message={action.error} />
       <button className="btn btn-primary" disabled={!!action.busy}>Open request</button>
@@ -560,7 +561,7 @@ type RegBrief = { id: string; number: string; serial: { id: string; serial: stri
   start_date: string | null; expiry_date: string | null; created_at: string; version: number }
 type Policy = { id: string; item: Ref; months: number; start_event: string; auto_approve: boolean; requires_proof: boolean; replacement_rule: string
   effective_from: string; notes: string; active: boolean; used: number; version: number }
-type Reg = RegBrief & { customer: Party | null; customer_contact: string; address: string; distributor: Party | null; distributor_name: string
+type Reg = RegBrief & { customer: Party | null; customer_contact: string; updates_consent: boolean; address: string; distributor: Party | null; distributor_name: string
   sale_date: string | null; installation_date: string | null; commissioning_date: string | null; handover_date: string | null; notes: string; policy: Policy | null
   would_start: string | null; would_expire: string | null; missing: string[]; ended_on: string | null; end_reason: string; replaces: { id: string; number: string } | null
   submitted_by: string; submitted_by_id: string | null; decided_by: string | null; decided_at: string | null; decision_reason: string; files: FileRow[]
@@ -616,7 +617,7 @@ function RegForm({ reg, onDone }: { reg?: Reg; onDone: (r: Reg) => void }) {
       const fd = new FormData(e.currentTarget)
       const s = (k: string) => String(fd.get(k) ?? '')
       const d = (k: string) => s(k) || null
-      const body = { customer_id: d('customer_id'), customer_name: s('customer_name'), customer_contact: s('customer_contact'), address: s('address'),
+      const body = { customer_id: d('customer_id'), customer_name: s('customer_name'), customer_contact: s('customer_contact'), updates_consent: fd.get('updates') === 'on', address: s('address'),
         distributor_id: d('distributor_id'), distributor_name: s('distributor_name'), sale_date: d('sale_date'), installation_date: d('installation_date'),
         commissioning_date: d('commissioning_date'), handover_date: d('handover_date'), notes: s('notes') }
       void action.run('save', async () => onDone(reg ? await api<Reg>(`/warranty-registrations/${reg.id}`, { method: 'PUT', body: { ...body, version: reg.version } })
@@ -631,6 +632,7 @@ function RegForm({ reg, onDone }: { reg?: Reg; onDone: (r: Reg) => void }) {
         <Field label="End customer's name" name="customer_name" maxLength={160} defaultValue={reg?.customer_name ?? ''} />
         <Field label="Phone or email" name="customer_contact" maxLength={160} defaultValue={reg?.customer_contact ?? ''} />
       </div>
+      <label className="check"><input type="checkbox" name="updates" defaultChecked={reg?.updates_consent ?? false} /> <span>The customer agreed to hear the outcome at this phone number or email</span></label>
       <TextareaField label="Installation address" name="address" maxLength={2000} rows={2} defaultValue={reg?.address ?? ''} />
       <div className="grid-fields">
         <SelectField label="Distributor or dealer" name="distributor_id" defaultValue={reg?.distributor?.id ?? ''} options={[['', 'None on record'], ...sellers.map((c): [string, string] => [c.id, c.name])]} />

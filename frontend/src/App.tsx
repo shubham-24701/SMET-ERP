@@ -13,6 +13,8 @@ import { PurchaseOrderPage, PurchaseOrdersPage, PurchaseRequestPage, PurchaseReq
 import { CorrectionsPage, CountPage, MovesPage, ReservationsPage, SerialPage, SerialsPage, StockPage } from './Stock'
 import { AlertPage, AlertsPage, AmcListPage, AmcPage, PoliciesPage, RegistrationPage, ServiceRequestPage, ServiceRequestsPage, WarrantyPage } from './Aftersales'
 import { BankPage, BanksPage, LabelsPage, StageChecksPage, TracePage, VisitPage, VisitsPage } from './Installation'
+import { MessagesAdminPage, NotificationsPage } from './Messages'
+import { ReportPage, ReportsPage, SearchPage } from './Reports'
 import { Shell } from './Shell'
 import { PageState } from './ui'
 import { MeContext } from './lib'
@@ -20,7 +22,7 @@ import { useTheme } from './theme'
 
 /** A page the user's roles don't open: a plain message, not a broken screen (the server refuses anyway). */
 function Allowed({ perm, me, children }: { perm: string; me: Me; children: React.ReactNode }) {
-  return me.permissions.includes(perm) ? children
+  return perm.split('|').some((x) => me.permissions.includes(x)) ? children
     : <PageState kind="empty" title="You don't have access to this page" message="Ask your system administrator if you need it for your work." action={<Link to="/">Back to overview</Link>} />
 }
 
@@ -113,7 +115,12 @@ export default function App() {
             <Route path="admin/audit" element={<Allowed perm="audit.view" me={me}><AuditPage /></Allowed>} />
             <Route path="admin/company" element={<Allowed perm="settings.view" me={me}><CompanyPage onChange={load} /></Allowed>} />
             <Route path="admin/system" element={<Allowed perm="system.view" me={me}><SystemPage /></Allowed>} />
+            <Route path="admin/messages" element={<Allowed perm="notifications.view|notifications.configure" me={me}><MessagesAdminPage /></Allowed>} />
             <Route path="admin" element={<Navigate to="/admin/users" replace />} />
+            <Route path="notifications" element={<NotificationsPage />} />
+            <Route path="reports" element={<ReportsPage />} />
+            <Route path="reports/:name" element={<ReportPage />} />
+            <Route path="search" element={<SearchPage />} />
             <Route path="*" element={<PageState kind="empty" title="Page not found" message="The address may be mistyped, or the page has moved." action={<Link to="/">Back to overview</Link>} />} />
           </Route>
         </Routes>

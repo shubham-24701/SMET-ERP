@@ -432,7 +432,8 @@ export function WarehousesPage() {
 type Rules = { po_auto_approve_up_to: string | number | null; po_self_approval: boolean; adjustment_self_approval: boolean
   install_photos_min: number; commission_photos_min: number; handover_photos_min: number; handover_with_open_issues: boolean
   maintenance_photos_min: number; service_photos_min: number; warranty_self_approval: boolean; public_warranty_dates: boolean
-  amc_renewal_notice_days: number; code_retention_days: number }
+  amc_renewal_notice_days: number; code_retention_days: number; amc_visit_notice_days: number; reminder_repeat_days: number
+  escalate_after_days: number | null; escalation_role_id: string | null; phone_country_code: string }
 type Seq = { doc_type: string; prefix: string; padding: number; yearly: boolean; next: string }
 const DOCS: Record<string, string> = {
   purchase_request: 'Purchase requests', supplier_quote: 'Supplier quotations', purchase_order: 'Purchase orders',
@@ -448,6 +449,7 @@ export function RulesPage() {
   const edit = can('settings.configure')
   const rules = useApi<{ rules: Rules; version: number }>('/rules')
   const seqs = useApi<{ items: Seq[] }>('/numbering')
+  const roles = useApi<{ items: { id: string; name: string }[] }>(can('roles.view') ? '/roles' : null)
   const action = useAction(() => { rules.reload(); seqs.reload() })
   const [fields, setFields] = useState<Record<string, string>>({})
   if (!rules.data || !seqs.data) return <PageState kind="loading" title="Loading…" />
@@ -518,6 +520,30 @@ export function RulesPage() {
           </div>
           <TextareaField label="Reason for the change" name="reason" maxLength={500} />
           {edit && <button className="btn btn-primary" disabled={!!action.busy}>Save after-sales rules</button>}
+        </fieldset>
+      </form>
+      <form className="settings-row" noValidate onSubmit={(e) => {
+        e.preventDefault()
+        const fd = new FormData(e.currentTarget)
+        const n = (k: string) => (fd.get(k) === '' ? null : Number(fd.get(k)))
+        setFields({})
+        void action.run('reminders', () => api('/rules', { method: 'PATCH', body: { version: rules.data!.version, amc_visit_notice_days: n('visit'),
+          reminder_repeat_days: n('repeat'), escalate_after_days: n('escalate'), escalation_role_id: fd.get('role') || null,
+          phone_country_code: fd.get('cc'), reason: fd.get('reason') } })
+          .catch((err) => { setFields(fieldsOf(err)); throw err }))
+      }}>
+        <div><h2>Reminders</h2><p className="muted">When people are told about visits coming up, how often a reminder about something late repeats, and who hears once it is very late (assumption A31).</p></div>
+        <fieldset className="settings-panel plain" disabled={!edit}>
+          <div className="grid-fields">
+            <Field label="Announce maintenance visits (days ahead)" name="visit" type="number" min={1} max={90} defaultValue={r.amc_visit_notice_days} error={fields.amc_visit_notice_days} />
+            <Field label="Repeat a reminder every (days)" name="repeat" type="number" min={1} max={90} defaultValue={r.reminder_repeat_days} error={fields.reminder_repeat_days} />
+            <Field label="Escalate after (days late)" name="escalate" type="number" min={1} max={365} defaultValue={r.escalate_after_days ?? ''} error={fields.escalate_after_days} hint="Empty: no escalation." />
+            <SelectField label="Escalate to" name="role" defaultValue={r.escalation_role_id ?? ''} error={fields.escalation_role_id}
+              options={[['', 'Nobody'], ...(roles.data?.items ?? []).map((x) => [x.id, x.name] as [string, string])]} />
+            <Field label="Country code for local phone numbers" name="cc" defaultValue={r.phone_country_code} error={fields.phone_country_code} hint="971 for the UAE: 050 123 4567 becomes +971 50 123 4567." />
+          </div>
+          <TextareaField label="Reason for the change" name="reason" maxLength={500} />
+          {edit && <button className="btn btn-primary" disabled={!!action.busy}>Save reminder rules</button>}
         </fieldset>
       </form>
       <section className="settings-row">

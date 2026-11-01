@@ -6,6 +6,8 @@ import { NAV } from './nav'
 import { MODES, type Mode } from './theme'
 import { Dialog, Logo } from './ui'
 import { ChangePasswordForm } from './Auth'
+import { BellLink } from './Messages'
+import { SearchBox } from './Reports'
 
 // A path that another menu entry extends ("/stock" vs "/stock/moves") lights up only on itself.
 const PARENTS = new Set(NAV.flatMap((g) => g.items).map((i) => i.path).filter((p) => NAV.some((g) => g.items.some((i) => i.path.startsWith(`${p}/`)))))
@@ -91,6 +93,8 @@ export function Shell({ me, mode, onMode, onMe, onSignOut }: {
         <div className="sidebar-head">
           <span className="brand"><Logo /> SMET Operations</span>
           <span className="scope">{me.company.name}</span>
+          <SearchBox />
+          <BellLink />
         </div>
         <nav aria-label="Main">
           {groups.map((g) => (

@@ -26,7 +26,7 @@ from app.admin import csv_cell
 from app.audit import record
 from app.auth import DB, CurrentPrincipal, Principal, require
 from app.inventory import conflict
-from app.masters import Limit, Offset, rules
+from app.masters import Limit, NumbersRoute, Offset, rules
 from app.models import (
     AmcContract,
     AssemblyOrder,
@@ -56,7 +56,7 @@ from app.models import (
     WarrantyRegistration,
 )
 
-router = APIRouter(tags=["reports"])
+router = APIRouter(tags=["reports"], route_class=NumbersRoute)
 EXPORT_LIMIT = 10_000
 ZERO = Decimal(0)
 

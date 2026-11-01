@@ -95,6 +95,7 @@ function RegisterForm({ serial, onSent }: { serial: string; onSent: (m: string) 
       <Field label="Bought from" name="seller" maxLength={160} hint="The distributor or dealer" />
       <TextareaField label="Where it is installed" name="address" maxLength={2000} rows={2} />
       <label className="field"><span>Invoice or receipt</span><input type="file" name="proof" accept="image/jpeg,image/png,image/webp,application/pdf" /></label>
+      <label className="check"><input type="checkbox" name="updates" value="true" /> <span>Tell me the outcome at this phone number or email</span></label>
       <Trap />
       <FormError message={s.error} />
       <button className="btn btn-primary" disabled={s.busy}>Send registration</button>
@@ -108,13 +109,14 @@ function ServiceForm({ serial, onSent }: { serial: string; onSent: (m: string) =
     <form className="section" noValidate onSubmit={(e) => {
       e.preventDefault()
       const fd = new FormData(e.currentTarget)
-      void s.send(() => api('/public/service-requests', { method: 'POST', body: { serial, name: fd.get('name'), phone: fd.get('phone'), issue: fd.get('issue'), preferred_visit: fd.get('preferred_visit'), website: fd.get('website') } }))
+      void s.send(() => api('/public/service-requests', { method: 'POST', body: { serial, name: fd.get('name'), phone: fd.get('phone'), issue: fd.get('issue'), preferred_visit: fd.get('preferred_visit'), updates: fd.get('updates') === 'on', website: fd.get('website') } }))
     }}>
       <h2>Ask for service</h2>
       <Field label="Your name" name="name" required minLength={2} maxLength={160} error={s.fields.name} />
       <Field label="Phone" name="phone" type="tel" required minLength={5} maxLength={60} error={s.fields.phone} />
       <TextareaField label="What is wrong" name="issue" required minLength={10} maxLength={4000} rows={3} error={s.fields.issue} />
       <Field label="When can we visit" name="preferred_visit" maxLength={200} placeholder="e.g. weekday mornings" />
+      <label className="check"><input type="checkbox" name="updates" /> <span>Send me updates about this request by text message</span></label>
       <Trap />
       <FormError message={s.error} />
       <button className="btn btn-primary" disabled={s.busy}>Send request</button>
