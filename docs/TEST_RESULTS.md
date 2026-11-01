@@ -2,6 +2,36 @@
 
 Every result below was produced by running the command shown. Results that have not run yet say so.
 
+## 2026-10-30 · Phase 4 · local and CI
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Backend | `uv run ruff check .`, `uv run pytest -q -W error::DeprecationWarning` | clean; **100 passed** (82 before Phase 4, 11 Phase 4, 7 review regressions) |
+| Migrations | upgrade, downgrade to 0004, upgrade, `alembic check` | clean; 0005 Phase 4, 0006 review fix |
+| Frontend | lint, typecheck, Vitest, build | clean; 7 passed; JS 516 kB (137 kB gzipped) |
+| Browser journeys | `npx playwright test` (local Chromium) | **4 passed**; `phase4.spec.ts` runs two people in two browsers: enquiry → quotation draft → prices → submit → approval by the other → customer answer → sales order → reservation → dispatch of two picked serials → delivery note → delivery; project → site → requirement sheet → engineering review → material list; phone width without sideways scroll |
+
+### Independent review of Phase 4 (2026-10-30)
+
+| # | Severity | Finding | Fix | Regression test |
+| --- | --- | --- | --- | --- |
+| 1 | High | Cancelling a sent dispatch could revive a reservation of an order closed in the meantime | Each dispatch line records the reservations it used; a cancellation gives back exactly those, and none if the order is closed | `test_a_dispatch_cancelled_after_its_order_closed_returns_goods_to_free_stock` |
+| 2 | High | Every order of a project counted the whole project reservation as its own (shortages under-reported) | A project's reservation is shared once across its open orders, oldest first | `test_a_project_reservation_is_shared_once_across_its_orders` |
+| 3 | High | The project reserve ignored what its orders already held (double reservation) | The material list counts the orders' reservations | same |
+| 4 | Medium | Planning a dispatch for an unknown order gave a 500 | Order and warehouse checked before anything is written | `test_a_dispatch_for_an_unknown_order_is_refused_cleanly` |
+| 5 | Medium | A function name used as a value passed the formula check, then failed at every evaluation | Function names only as calls; input names can't be function names | `test_odd_but_valid_input_answers_clearly_not_with_500` |
+| 6 | Medium | Huge numbers crashed the evaluator | Constants above 10¹² refused; overflow answered as a clear error | same |
+| 7 | Medium | Renaming a sizing rule to a taken name gave a 500 | Same check as on creation | same |
+| 8 | Medium | An explicit null on a required project or task field gave a 500 | Treated as unchanged | same |
+| 9 | Low | Raising purchase requests from orders and projects bypassed `purchasing.create`; order and project reservations had different rules | Intended and recorded: a purchase request is only a request (an order still needs purchasing approval); a project now reserves for itself with `projects.create`, as an order does with `sales.create` | ROLE_PERMISSION_MATRIX.md |
+| 10 | Low | A revision reset its editors, so an earlier author could approve the next revision | Editors and the submitter carry over | `test_whoever_shaped_a_quotation_cannot_approve_its_next_revision` |
+| 11 | Low | Approving an older sheet version replaced a newer approved one | Refused | `test_an_older_sheet_cannot_replace_a_newer_approved_one` |
+| 13 | Low | A sizing rule couldn't be switched off from the screen | Checkbox read correctly | code review |
+| 14 | Low | Delivery and answer dates defaulted to UTC (yesterday after midnight in Dubai); a quantity refused on a serial item was ignored | Local date; 422 asking for serials | `test_refused_serials_are_named_not_counted` |
+
+Recorded, not changed: the full project record and order dispatch lists are not paginated, and the
+order count cards ignore the search (#12); sizes per project stay small; revisit in P8.
+
 ## 2026-10-30 · Phases 2–3 · local (Linux cloud workspace, PostgreSQL 16, Python 3.13, Node 22) and CI
 
 | Check | Command | Result |

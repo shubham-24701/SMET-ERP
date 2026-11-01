@@ -1,39 +1,5 @@
-import { expect, test, type Page } from '@playwright/test'
-import { ADMIN, go, shot, signIn, signInAsAdmin, signOut } from './helpers'
-
-// Synthetic data only. Two operations users: work one raises, the other approves.
-const PW = 'operations-pass-2026'
-
-async function newPassword(page: Page, temp: string) {
-  await expect(page.getByRole('heading', { name: 'Choose your password' })).toBeVisible()
-  await page.getByLabel('Temporary password').fill(temp)
-  await page.getByLabel('New password').fill(PW)
-  await page.getByRole('button', { name: 'Change password' }).click()
-  await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible()
-}
-
-/** The administrator makes a role with every business permission and two people holding it. */
-async function seedPeople(page: Page) {
-  const { csrf_token } = await (await page.request.get('/api/v1/auth/csrf')).json()
-  const headers = { 'X-CSRF-Token': csrf_token }
-  const perms = (await (await page.request.get('/api/v1/permissions')).json()).items
-    .map((p: { code: string }) => p.code).filter((c: string) => !c.startsWith('users.') && !c.startsWith('roles.'))
-  const role = await (await page.request.post('/api/v1/roles', { headers, data: { name: `Operations ${Date.now()}`, permissions: perms } })).json()
-  const people: Record<string, string> = {}
-  for (const name of ['Maya Maker', 'Chen Checker']) {
-    const email = `${name.split(' ')[0].toLowerCase()}${Date.now()}@example.test`
-    const r = await (await page.request.post('/api/v1/users', { headers, data: { name, email, role_ids: [role.id] } })).json()
-    people[name] = `${email}\n${r.temporary_password}`
-  }
-  return people
-}
-
-async function as(page: Page, who: string, people: Record<string, string>, current: string) {
-  await signOut(page, current)
-  const [email, temp] = people[who].split('\n')
-  await signIn(page, email, temp)
-  await newPassword(page, temp)
-}
+import { expect, test } from '@playwright/test'
+import { ADMIN, as, go, seedPeople, shot, signInAsAdmin } from './helpers'
 
 test('buy, receive, inspect, assemble and pass a battery', async ({ page }) => {
   test.setTimeout(120_000)

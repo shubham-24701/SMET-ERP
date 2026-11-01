@@ -95,6 +95,8 @@ function WorkQueue() {
     ['Items below minimum stock', useTotal('stock.view', '/stock/summary?low=true&limit=1'), '/stock'],
     ['Batteries waiting for inspection', useTotal('quality.create', '/inspections/queue?limit=1'), '/assembly/inspection'],
     ['Open purchase requests', useTotal('purchasing.create', '/purchase-requests?status=open&limit=1'), '/purchasing/requests'],
+    ['Open enquiries', useTotal('sales.create', '/enquiries?status=open&limit=1'), '/sales/enquiries'],
+    ['Dispatches planned or on the way', useTotal('dispatch.create', '/dispatches?status=planned,dispatched&limit=1'), '/dispatch'],
   ]
   const shown = rows.filter(([, n]) => n !== undefined)
   if (!shown.length) return null

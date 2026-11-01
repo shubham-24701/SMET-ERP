@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app import assembly, inventory, jobs, masters, procurement
+from app import assembly, dispatch, inventory, jobs, masters, procurement, projects, sales
 from app.admin import router as admin_router
 from app.audit import request_info
 from app.auth import CSRF_COOKIE, DB, require
@@ -137,7 +137,7 @@ app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts) 
 api = APIRouter(prefix="/api/v1")
 api.include_router(auth_router)
 api.include_router(admin_router)
-for module in (masters, procurement, inventory, assembly):
+for module in (masters, procurement, inventory, assembly, sales, projects, dispatch):
     api.include_router(module.router)
 
 

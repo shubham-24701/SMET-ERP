@@ -408,3 +408,23 @@ h3.sub { font-size: var(--fs-body); font-weight: 600; margin: 16px 0 8px; }
    it stretches the whole page sideways on a phone */
 .table-wrap { position: relative; }
 .feed.panel { padding: 4px var(--card-pad); }
+
+/* ---------- Phase 4: delivery note (printable), serial picker ---------- */
+.print-doc { max-inline-size: 860px; margin: 32px auto; padding: 40px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card); }
+.print-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; margin-block-end: 24px; }
+.print-head h1 { text-align: end; }
+.print-head p { text-align: end; }
+.print-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px 32px; margin: 0 0 24px; }
+.print-facts dt { color: var(--muted); font-size: var(--fs-small); }
+.print-facts dd { margin: 2px 0 0; }
+.print-sign { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; margin-block-start: 48px; }
+.print-sign span { display: block; block-size: 48px; border-block-end: 1px solid var(--text); }
+.serial-picker .link-btn { font-size: var(--fs-small); }
+.inline-date { inline-size: 150px; margin-inline-start: auto; block-size: 30px; }
+@media print {
+  body { background: #fff; }
+  .print-doc { border: 0; margin: 0; padding: 0; max-inline-size: none; }
+  .no-print { display: none; }
+}
+.panel-head { flex-wrap: wrap; }
+.row-end { flex: 0 1 auto; flex-wrap: wrap; }

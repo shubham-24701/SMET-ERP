@@ -1,5 +1,22 @@
 # Release notes
 
+## 0.3.0 · Phase 4: sales, projects and dispatch · 2026-10-30
+
+New
+- Enquiries, and quotations prepared from them: battery, accessory, installation, commissioning and
+  AMC lines with customer prices and discounts; revisions that never change once submitted; approval
+  by someone else; the customer's answer; one sales order per accepted revision.
+- Sales orders: what is still to send, reserved, free and short; reserve stock; request purchases or
+  plan assembly for what is short.
+- Dispatch: plan, send exact serial numbers from available stock only, print the delivery note, record
+  delivery with refused and damaged goods, or cancel with stock and reservations restored.
+- Projects: sites and surveys, milestones, tasks, notes, changes approved by someone else; battery
+  requirement sheets approved by an engineer; sizing rules SMET can enter (none is built in); the
+  material list with reservations, purchase requests, assembly and the project quotation.
+
+Upgrade
+- `uv run alembic upgrade head` (migration 0005; existing warehouses get a customer-returns area).
+
 ## 0.2.0 · Phases 2–3: purchasing, stock, assembly and quality · 2026-10-30
 
 New

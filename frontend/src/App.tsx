@@ -6,6 +6,9 @@ import { AuditPage, CompanyPage, RolesPage, SystemPage, UsersPage } from './Admi
 import { AssemblyOrderPage, AssemblyOrdersPage, BomsPage, InspectionPage } from './Assembly'
 import { ItemsPage, PartiesPage, RulesPage, WarehousesPage } from './Masters'
 import { Dashboard } from './pages'
+import { DeliveryNotePage, DispatchPage, DispatchesPage, NewDispatchPage } from './Dispatch'
+import { ProjectPage, ProjectsPage, SizingRulesPage } from './Projects'
+import { EnquiriesPage, QuotationPage, QuotationsPage, SalesOrderPage, SalesOrdersPage } from './Sales'
 import { PurchaseOrderPage, PurchaseOrdersPage, PurchaseRequestPage, PurchaseRequestsPage } from './Purchasing'
 import { CorrectionsPage, CountPage, MovesPage, ReservationsPage, SerialPage, SerialsPage, StockPage } from './Stock'
 import { Shell } from './Shell'
@@ -54,8 +57,20 @@ export default function App() {
     <MeContext value={me}>
       <BrowserRouter>
         <Routes>
+          <Route path="print/dispatch/:id" element={<Allowed perm="dispatch.view" me={me}><DeliveryNotePage /></Allowed>} />
           <Route element={<Shell me={me} mode={mode} onMode={setMode} onMe={setMe} onSignOut={() => { window.history.replaceState(null, '', '/'); setMe(null) }} />}>
             <Route index element={<Dashboard />} />
+            <Route path="sales/enquiries" element={<Allowed perm="sales.view" me={me}><EnquiriesPage /></Allowed>} />
+            <Route path="sales/quotations" element={<Allowed perm="sales.view" me={me}><QuotationsPage /></Allowed>} />
+            <Route path="sales/quotations/:id" element={<Allowed perm="sales.view" me={me}><QuotationPage /></Allowed>} />
+            <Route path="sales/orders" element={<Allowed perm="sales.view" me={me}><SalesOrdersPage /></Allowed>} />
+            <Route path="sales/orders/:id" element={<Allowed perm="sales.view" me={me}><SalesOrderPage /></Allowed>} />
+            <Route path="dispatch" element={<Allowed perm="dispatch.view" me={me}><DispatchesPage /></Allowed>} />
+            <Route path="dispatch/new" element={<Allowed perm="dispatch.create" me={me}><NewDispatchPage /></Allowed>} />
+            <Route path="dispatch/:id" element={<Allowed perm="dispatch.view" me={me}><DispatchPage /></Allowed>} />
+            <Route path="projects" element={<Allowed perm="projects.view" me={me}><ProjectsPage /></Allowed>} />
+            <Route path="projects/rules" element={<Allowed perm="projects.view" me={me}><SizingRulesPage /></Allowed>} />
+            <Route path="projects/:id" element={<Allowed perm="projects.view" me={me}><ProjectPage /></Allowed>} />
             <Route path="purchasing/requests" element={<Allowed perm="purchasing.view" me={me}><PurchaseRequestsPage /></Allowed>} />
             <Route path="purchasing/requests/:id" element={<Allowed perm="purchasing.view" me={me}><PurchaseRequestPage /></Allowed>} />
             <Route path="purchasing/orders" element={<Allowed perm="purchasing.view" me={me}><PurchaseOrdersPage /></Allowed>} />

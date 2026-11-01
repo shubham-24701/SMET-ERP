@@ -71,3 +71,19 @@ Quantities are JSON numbers.
 | Assembly orders | `GET /assembly-orders[/{id}]`, `/assembly-orders/people`; `POST /assembly-orders`, `…/{id}/release`, `…/complete`, `…/cancel`; `POST …/{id}/issue`, `…/return`, `…/units` | assembly.view; assembly.create; assembly.edit |
 | Shortage to purchase | `POST /assembly-orders/{id}/shortage-request` | purchasing.create + assembly.view |
 | Final inspection | `GET /inspections/queue`; `POST /serials/{id}/inspect` | assembly.view; quality.create |
+
+## Phase 4 routes
+
+| Area | Routes | Permission |
+| --- | --- | --- |
+| Enquiries | `GET /enquiries[/{id}]`; `POST /enquiries`, `PATCH /enquiries/{id}`, `POST /enquiries/{id}/quote` | sales.view; sales.create |
+| Quotations | `GET /quotations[/{id}]`; `POST /quotations`, `PUT /quotations/{id}/draft`, `POST …/{id}/submit`, `…/revise`, `…/answer`, `…/convert` | sales.view; sales.create |
+| Quotation approval | `POST /quotations/{id}/approve`, `…/reject` | sales.approve (not on your own revision) |
+| Sales orders | `GET /sales-orders[/{id}]`; `POST …/{id}/reserve`, `…/purchase-request`, `…/close` | sales.view; sales.create |
+| Assembly for an order | `POST /sales-orders/{id}/assembly-order` | assembly.create + sales.view |
+| Dispatch | `GET /dispatch/plan`, `GET /dispatches[/{id}]`; `POST /dispatches`, `PUT /dispatches/{id}`, `POST …/{id}/send`, `…/deliver`, `…/cancel` | dispatch.view; dispatch.create |
+| Projects | `GET /projects[/{id}]`, `/projects/people`; `POST /projects`, `PATCH /projects/{id}`, `POST /projects/{id}/sites`, `PUT /sites/{id}`, milestones, tasks, notes, changes | projects.view; projects.create |
+| Decisions | `POST /changes/{id}/approve\|reject`, `POST /sheets/{id}/approve\|reject` | projects.approve (not your own) |
+| Requirement sheets | `POST /projects/{id}/sheets`, `PUT /sheets/{id}`, `POST /sheets/{id}/submit` | projects.create |
+| Material list | `POST /projects/{id}/reserve` (+ stock.create), `…/purchase-request`, `…/assembly-order` (assembly.create), `…/quotation` (sales.create) | projects.create / view |
+| Sizing rules | `GET /sizing-rules`, `POST /sizing-rules/{id}/evaluate`; `POST /sizing-rules`, `PUT /sizing-rules/{id}` | projects.view; projects.configure |
