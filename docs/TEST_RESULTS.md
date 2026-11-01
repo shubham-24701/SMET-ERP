@@ -2,6 +2,43 @@
 
 Every result below was produced by running the command shown. Results that have not run yet say so.
 
+## 2026-11-01 · Phase 7 · local and CI
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Backend | `uv run ruff check .`, `ruff format --check .`, `uv run pytest -q` | clean; **156 passed** (127 before Phase 7, 17 Phase 7 scenarios, 12 review regressions) |
+| Migrations | upgrade to 0009 on the working and test databases | clean |
+| Frontend | lint, typecheck, Vitest | clean; 7 passed |
+| Browser journeys | `npx playwright test` (local Chromium) | **7 passed**; `phase7.spec.ts`: SMS switched to mock and its connection tested; a message reworded with its field check and preview; a submitted purchase order reaching the approver's bell and inbox and opening the order; a stranger asking for service with text updates; the request moved on and its text recorded (mock), recipient masked; dashboards, a figure opened to its rows, filtered, downloaded as Excel; search. One earlier full run had the Phase 6 journey time out once; it passed alone and in the next two full runs (watched in CI) |
+| Regression check | the 12 review tests run against the code before the fixes | 12 failed before, 12 pass after |
+| External sends | every provider call in tests goes to a recorded fake; a test fails if a provider is called while sends are off | nothing left the machine |
+
+### Independent review of Phase 7 (2026-11-01)
+
+| # | Severity | Finding | Fix | Regression test |
+| --- | --- | --- | --- | --- |
+| 1 | High | Excel downloads of stock movements and quality holds failed (time zones) | Times converted to SMET's zone | `test_every_report_downloads_in_both_formats` |
+| 2 | High | The stored SMTP password could be sent to another server by changing the host, and a connection test ran with sends off | The credential must be typed again when the server or account changes; no password over plain text; tests only when the server allows | `test_the_stored_password_never_follows_a_new_server` |
+| 3 | High | A timeout after sending, an unreadable reply or an SMTP cut-off was retried, so a customer could get a message twice | Marked "unknown", never resent by itself | `test_a_send_that_may_have_arrived_is_never_repeated` |
+| 4 | Medium | The public form could make SMET text any number, at SMET's cost | No text on opening from the public form; texts only to numbers in SMET's country (A33) | `test_the_public_form_cant_text_numbers_abroad_or_on_opening` |
+| 5 | Medium | Status checks kept calling Twilio after sends were switched off | Skipped unless allowed | `test_status_checks_stop_when_the_server_cap_is_off` |
+| 6 | Medium | A download over the limit loaded every row first | Counted first | `test_export_refuses_too_many_rows_before_loading_them` |
+| 7 | Medium | CSV turned negative numbers into text | Only text is guarded against formulas | `test_numbers_stay_numbers_and_text_cant_become_a_formula` |
+| 8 | Medium | A dashboard link with several statuses showed "All" in the filter | The combined value is shown | browser check |
+| 9 | Medium | Saving reminder rules could clear the escalation role (late-loading list) | The select waits for the list; without it the current role is kept | code review |
+| 10 | Medium | A rejected sheet or change didn't reach its author | Author and requester added | `test_a_rejected_sheet_reaches_the_person_who_wrote_it` |
+| 11 | Medium | Staff copies of customer events had customer wording and no link | Separate "email to customers" wording | `test_staff_email_keeps_the_link_and_customers_get_their_own_wording` |
+| 12 | Medium | Report dates were UTC dates; "today" came from two clocks | Company dates and today everywhere in reports and reminders | `test_report_dates_are_smet_dates` |
+| 13 | Low | Reminder periods follow the calendar, not when each item became late | Recorded (A31); harmless repeat at most once a period | — |
+| 14 | Low | Two first saves of a channel or wording at once gave a 500 | Answered as "changed by someone else" | code review |
+| 15 | Low | An opt-out after queueing didn't stop the send | Re-checked at send time | `test_wording_only_for_real_channels_and_opt_outs_checked_at_send` |
+| 16 | Low | Duplicate row keys in two reports | Row index | code review |
+| 17 | Low | The sandbox test number was kept in full in the audit log | Masked | `test_the_sandbox_recipient_is_masked_in_the_audit_log` |
+| 18 | Low | Wording could be saved for a channel that doesn't exist | Refused | same as 15 |
+
+The reviewer confirmed the audit listener can't break or roll back the action it follows: it only
+adds a job row in the same transaction; the notifications are built by the worker after the commit.
+
 ## 2026-10-30 · Phase 6 · local and CI
 
 | Check | Command | Result |
