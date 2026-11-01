@@ -27,6 +27,7 @@ from app import (
     procurement,
     projects,
     public,
+    reports,
     sales,
     service,
     trace,
@@ -179,6 +180,7 @@ for module in (
     public,
     messaging,
     notify,
+    reports,
 ):
     api.include_router(module.router)
 
