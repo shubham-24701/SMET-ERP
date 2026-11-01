@@ -1,0 +1,47 @@
+# Release notes
+
+## 0.2.0 · Phases 2–3: purchasing, stock, assembly and quality · 2026-10-30
+
+New
+- Master data: items (battery models with capacity, voltage, chemistry; battery units; components;
+  accessories; materials), units, suppliers and customers with contacts, terms and supplied items,
+  warehouses with standard areas and your own racks, rules and document numbering.
+- Purchasing: requests, supplier quotations compared side by side, purchase orders with approval by
+  someone else, deliveries, inspection decisions (accept, reject, hold, release), returns to supplier.
+- Stock: on hand by status, free after reservations, below-minimum list with one-click purchase
+  request, movements with CSV, serial numbers with full history, reservations, counts, corrections
+  approved by a second person, reconciliation.
+- Assembly: bills of materials with versions, assembly orders that reserve, issue and return
+  materials, each battery serialised with links to its components.
+- Final inspection: checklists and readings per model; limits apply once SMET confirms them; only a
+  pass puts a battery into available stock; hold and rework.
+- Overview: "Waiting for you" lists approvals, deliveries, corrections, low stock and inspections.
+
+Upgrade
+- `uv run alembic upgrade head` (migration 0003). New permissions reach the role templates at start-up.
+
+Known limitations
+- No file attachments yet (Phase 7); no import of existing data yet (waiting for SMET's files).
+- Purchase prices are reference only; no stock valuation.
+
+## 0.1.0 · Phase 1 foundation · 2026-10-28
+
+New
+- First-run setup: company profile and the first System Administrator.
+- Sign-in with temporary passwords that must be replaced; change password; sign out everywhere on change.
+- Users: add, edit, give roles, deactivate and reactivate, reset password; filter by status.
+- Roles & permissions: 17 role templates from the proposal, custom roles, permission editor with the
+  effect of each change; guards against changing your own access.
+- Audit log: every sign-in and change with who, when, what changed and why; filters; CSV export.
+  Entries can't be edited or deleted, by anyone.
+- Company settings (name, time zone, currency) with live previews; System health.
+- Light, dark and system themes; works at phone width.
+
+Setup
+- Needs PostgreSQL. Run `uv run python -m app.setup_db` once, then `uv run alembic upgrade head`
+  (README, "Run it on Windows 11").
+
+Known limitations
+- No business modules yet (procurement and inventory come in 0.2.0).
+- No email: password resets are handed over by an administrator.
+- No multi-factor sign-in yet.

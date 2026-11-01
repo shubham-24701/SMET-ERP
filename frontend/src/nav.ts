@@ -1,0 +1,56 @@
+import {
+  Activity, ArrowLeftRight, Barcode, Boxes, Building2, ClipboardCheck, ClipboardList, Factory, FileText, LayoutDashboard,
+  ListTree, Package, PackageCheck, ScrollText, Settings2, ShieldCheck, ShoppingCart, Truck, Users, Warehouse, type LucideIcon,
+} from 'lucide-react'
+
+/** `perm`: shown only to users holding it (the server enforces it regardless). */
+export type NavItem = { path: string; label: string; icon: LucideIcon; perm?: string }
+
+// Business modules join this list as each phase delivers them; nothing here is a placeholder.
+export const NAV: { group: string; items: NavItem[] }[] = [
+  { group: 'Overview', items: [{ path: '/', label: 'Dashboard', icon: LayoutDashboard }] },
+  {
+    group: 'Purchasing',
+    items: [
+      { path: '/purchasing/requests', label: 'Purchase requests', icon: FileText, perm: 'purchasing.view' },
+      { path: '/purchasing/orders', label: 'Purchase orders', icon: ShoppingCart, perm: 'purchasing.view' },
+    ],
+  },
+  {
+    group: 'Stock',
+    items: [
+      { path: '/stock', label: 'Stock', icon: Boxes, perm: 'stock.view' },
+      { path: '/stock/moves', label: 'Movements', icon: ArrowLeftRight, perm: 'stock.view' },
+      { path: '/stock/serials', label: 'Serial numbers', icon: Barcode, perm: 'stock.view' },
+      { path: '/stock/reservations', label: 'Reservations', icon: PackageCheck, perm: 'stock.view' },
+      { path: '/stock/corrections', label: 'Counts & corrections', icon: ClipboardList, perm: 'stock.view' },
+    ],
+  },
+  {
+    group: 'Assembly',
+    items: [
+      { path: '/assembly/orders', label: 'Assembly orders', icon: Factory, perm: 'assembly.view' },
+      { path: '/assembly/inspection', label: 'Final inspection', icon: ClipboardCheck, perm: 'assembly.view' },
+      { path: '/assembly/boms', label: 'Bills of materials', icon: ListTree, perm: 'bom.view' },
+    ],
+  },
+  {
+    group: 'Master data',
+    items: [
+      { path: '/masters/items', label: 'Items', icon: Package, perm: 'items.view' },
+      { path: '/masters/parties', label: 'Suppliers & customers', icon: Truck, perm: 'parties.view' },
+      { path: '/masters/warehouses', label: 'Warehouses', icon: Warehouse, perm: 'warehouses.view' },
+    ],
+  },
+  {
+    group: 'Administration',
+    items: [
+      { path: '/admin/users', label: 'Users', icon: Users, perm: 'users.view' },
+      { path: '/admin/roles', label: 'Roles & permissions', icon: ShieldCheck, perm: 'roles.view' },
+      { path: '/admin/audit', label: 'Audit log', icon: ScrollText, perm: 'audit.view' },
+      { path: '/admin/company', label: 'Company settings', icon: Building2, perm: 'settings.view' },
+      { path: '/admin/rules', label: 'Rules & numbering', icon: Settings2, perm: 'settings.view' },
+      { path: '/admin/system', label: 'System health', icon: Activity, perm: 'system.view' },
+    ],
+  },
+]
