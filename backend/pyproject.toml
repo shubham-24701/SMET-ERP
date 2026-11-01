@@ -1,6 +1,6 @@
 [project]
 name = "smet-erp-backend"
-version = "0.5.0"
+version = "0.6.0"
 description = "SMET Battery Operations ERP - backend"
 requires-python = ">=3.13,<3.14"
 dependencies = [
@@ -8,6 +8,7 @@ dependencies = [
     "argon2-cffi>=25.1.0",
     "cryptography>=50.0.2",
     "fastapi>=0.162.0",
+    "openpyxl>=3.1.5",
     "psycopg[binary]>=3.3.6",
     "pydantic-settings>=2.16.2",
     "python-multipart>=0.0.32",

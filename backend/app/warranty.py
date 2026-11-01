@@ -296,7 +296,7 @@ def reg_row(db: Session, r: WarrantyRegistration, full: bool = False) -> dict:
         replaces = db.get(WarrantyRegistration, r.replaces_id) if r.replaces_id else None
         row |= {
             "customer": party_ref(db.get(Party, r.customer_id)) if r.customer_id else None,
-            "customer_contact": r.customer_contact, "address": r.address,
+            "customer_contact": r.customer_contact, "updates_consent": r.updates_consent, "address": r.address,
             "distributor": party_ref(db.get(Party, r.distributor_id)) if r.distributor_id else None,
             "distributor_name": r.distributor_name, "sale_date": r.sale_date, "installation_date": r.installation_date,
             "commissioning_date": r.commissioning_date, "handover_date": r.handover_date, "notes": r.notes,
@@ -349,6 +349,7 @@ class RegIn(BaseModel):
     customer_id: uuid.UUID | None = None
     customer_name: Short = ""
     customer_contact: Short = ""
+    updates_consent: bool = False  # the customer agreed to be told the outcome at that contact
     address: Text = ""
     distributor_id: uuid.UUID | None = None
     distributor_name: Short = ""
@@ -364,6 +365,7 @@ class RegPut(BaseModel):
     customer_id: uuid.UUID | None = None
     customer_name: Short = ""
     customer_contact: Short = ""
+    updates_consent: bool = False  # the customer agreed to be told the outcome at that contact
     address: Text = ""
     distributor_id: uuid.UUID | None = None
     distributor_name: Short = ""
@@ -545,6 +547,7 @@ class CorrectIn(BaseModel):
     reason: NeededReason
     customer_name: Short | None = None
     customer_contact: Short | None = None
+    updates_consent: bool | None = None
     address: Text | None = None
     sale_date: date | None = None
     installation_date: date | None = None
@@ -698,7 +701,7 @@ def carry_to_replacement(
     )
     db.flush()
     r = _new(db, serial_id=new.id, route="replacement", status="approved", customer_id=orig.customer_id,
-             customer_name=orig.customer_name, customer_contact=orig.customer_contact, address=orig.address,
+             customer_name=orig.customer_name, customer_contact=orig.customer_contact, updates_consent=orig.updates_consent, address=orig.address,
              distributor_id=orig.distributor_id, distributor_name=orig.distributor_name, sale_date=on,
              installation_date=on, policy_id=(new_pol.id if rule != "original_remaining" and new_pol else orig.policy_id),
              start_date=on, expiry_date=max(expiries[rule]), replaces_id=orig.id, submitted_by=user.id,

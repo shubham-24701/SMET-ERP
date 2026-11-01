@@ -76,11 +76,17 @@ PERMISSIONS: dict[str, tuple[str, str]] = {
     "codes.view": ("Maintenance codes", "See maintenance alerts (never the codes)"),
     "codes.create": ("Maintenance codes", "Register and verify maintenance alerts, close them"),
     "codes.reveal": ("Maintenance codes", "Record and view maintenance reset codes (each view is audited)"),
+    # Phase 7
+    "notifications.view": ("Messages", "See the log of email, SMS and WhatsApp messages (recipients masked)"),
+    "notifications.configure": ("Messages", "Set up message providers and credentials, change message wording, manage opt-outs"),
+    "reports.export": ("Reports", "Download reports as CSV or Excel (each download is audited)"),
 }  # fmt: skip
 
 CONFIGURE_PERMS = [p for p in PERMISSIONS if p.endswith(".configure")]
 ADMIN_PERMS = [
-    p for p in PERMISSIONS if p.split(".")[0] in ("users", "roles", "audit", "settings", "system")
+    p
+    for p in PERMISSIONS
+    if p.split(".")[0] in ("users", "roles", "audit", "settings", "system", "notifications")
 ]
 # The administrator also holds every .configure permission: it can then grant them (the escalation
 # guard) and set up master data, but still approves, moves or inspects nothing.
@@ -97,7 +103,7 @@ def is_guarded(perm: str) -> bool:
     return module in ("users", "roles") or action in ("configure", "sensitive")
 
 
-OVERSIGHT = VIEW_ALL + ["stock.export"]
+OVERSIGHT = VIEW_ALL + ["stock.export", "reports.export"]
 
 # key -> (name, audience, description, permissions). Business permissions arrive with each phase.
 TEMPLATES: dict[str, tuple[str, str, str, list[str]]] = {

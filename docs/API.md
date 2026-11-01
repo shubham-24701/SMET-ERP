@@ -122,3 +122,17 @@ is not recorded yet; the same list is on `GET /visits/{id}` as `missing`.
 
 Refused attempts at approvals, corrections, codes, exports, settings, users and roles are written to
 the audit log (`access.denied`) in their own transaction.
+
+## Phase 7 routes
+
+| Area | Routes | Permission |
+| --- | --- | --- |
+| Own notifications | `GET /notifications[?unread=true]`, `POST /notifications/read` (ids or all), `GET`/`PUT /notifications/preferences` | signed in; only your own |
+| Channels | `GET /messages/providers`, `PUT /messages/providers/{email\|sms\|whatsapp}`, `POST …/{channel}/test` (no message sent) | notifications.configure |
+| Wording | `GET /messages/templates`, `PUT /messages/templates/{event}/{channel}`, `POST /messages/templates/preview` | notifications.configure |
+| Sent messages | `GET /messages/deliveries` (recipients masked); `POST /messages/deliveries/{id}/retry` | notifications.view; notifications.configure |
+| Opt-outs | `GET`/`POST /messages/opt-outs`, `DELETE /messages/opt-outs/{channel}/{address}?reason=` | notifications.configure |
+| Dashboards | `GET /dashboards` (only the figures you may see) | signed in; each figure needs its report's permission |
+| Reports | `GET /reports` (the ones you may see), `GET /reports/{name}?date_from&date_to&item&serial&customer&distributor&supplier&warehouse&project&status&flag` | the report's area view permission |
+| Downloads | `GET /reports/{name}/export?format=csv\|xlsx` (up to 10,000 rows; audited with the filters) | reports.export + the report's permission |
+| Search | `GET /search?q=` (two characters or more; five of each kind) | signed in; each kind needs its view permission |

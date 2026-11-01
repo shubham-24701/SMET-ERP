@@ -123,11 +123,12 @@ def main() -> None:
         password=getpass.getpass("PostgreSQL superuser (postgres) password: "),
     )
     values = setup(admin_url, args.host, args.port)
-    if not any(
-        ln.startswith("CODES_KEY=") for ln in (ENV.read_text().splitlines() if ENV.exists() else [])
-    ):
-        # Encrypts maintenance reset codes. Made once and kept: a new key would lock the stored codes.
-        values["CODES_KEY"] = Fernet.generate_key().decode()
+    have = ENV.read_text().splitlines() if ENV.exists() else []
+    # CODES_KEY encrypts maintenance reset codes, SECRETS_KEY message-provider credentials. Each is
+    # made once and kept: a new key would lock what is stored with the old one.
+    for name in ("CODES_KEY", "SECRETS_KEY"):
+        if not any(ln.startswith(f"{name}=") for ln in have):
+            values[name] = Fernet.generate_key().decode()
     write_env(values)
     print(f"Done. Databases smet and smet_test are ready; their addresses are in {ENV}.")
     print("Next: uv run alembic upgrade head")

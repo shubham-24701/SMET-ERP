@@ -1,5 +1,6 @@
 """The audit log: who did what, when, what changed and why. Append-only (database trigger)."""
 
+from collections.abc import Callable
 from contextvars import ContextVar
 from typing import Any
 
@@ -9,6 +10,9 @@ from app.models import AuditEvent
 
 # Set per request by the middleware in main.py, so callers don't pass the request around.
 request_info: ContextVar[dict] = ContextVar("request_info", default={})  # noqa: B039 - read-only default
+
+# Called for every recorded action, in the caller's transaction (Phase 7 notifications).
+LISTENERS: list[Callable] = []
 
 SENSITIVE_FIELDS = {"password", "password_hash", "token", "code", "secret"}
 
@@ -50,3 +54,5 @@ def record(
             request_id=info.get("request_id", ""),
         )
     )
+    for fn in LISTENERS:
+        fn(db, actor, action, entity_type, entity_id, summary, changes or {}, reason)

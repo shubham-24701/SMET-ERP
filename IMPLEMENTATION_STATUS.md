@@ -36,6 +36,25 @@ Nothing here has been sandbox-tested against an external provider or production-
 | 8 | Hardening: 111-checkpoint evidence, performance and concurrency tests, backup/restore drill, deployment package, incident process | Planned |
 | 9 | End-to-end verification, release readiness, activation checklist | Planned |
 
+## Phase 7: what was built
+
+| Area | What works | Evidence |
+| --- | --- | --- |
+| Events | Approval requests and decisions (purchase orders, stock corrections, quotations, requirement sheets, project changes, warranty registrations); service request status; warranty decisions and missing information; dispatch and handover progress; hourly: items below minimum, late supplier deliveries and assembly orders, maintenance visits coming up and overdue (planned or due by contract), contracts ending | `test_notifications.py`, `test_review_p7.py::test_a_rejected_sheet…` |
+| Recipients | Holders of the permission that acts, or the people assigned; never the person who did it; each person once per event; muted kinds respected; staff email only if they ask | `::test_an_approval_request_reaches_the_approvers…`, `::test_muted_events_stay_quiet` |
+| Reminders | Repeat every `reminder_repeat_days` while late; escalation to a chosen role after `escalate_after_days` (off until set) | `::test_reminders_repeat_on_schedule_and_escalate` |
+| Safety of the action | The notice is a job added in the action's transaction and built after the commit: a failure can't undo or slow the action; a rolled-back action notifies nobody | independent review |
+| Channels | Email (SMTP), SMS (Twilio), WhatsApp (Meta templates) behind one interface; off / mock / sandbox (test recipient only) / production; the server's `EXTERNAL_SENDS` (default off) caps them all; credentials encrypted (SECRETS_KEY), never shown or audited, re-entered if the server changes; connection test without sending | `::test_nothing_leaves_the_server_until_switched_on_and_allowed`, `::test_sandbox_sends_only_to_the_test_recipient`, `test_review_p7.py::test_the_stored_password…` |
+| Delivery | Queued with a unique key; retried with growing delay only when the provider was unreachable; a send that may have arrived is "unknown", never repeated; Twilio delivery status followed up; log with masked recipients; send again (with a warning for "unknown") | `::test_a_message_is_never_sent_twice`, `test_review_p7.py::test_a_send_that_may_have_arrived…` |
+| Consent and opt-out | Customers only about their own request or registration, only with consent from the form or staff, only to numbers in SMET's country; opt-outs checked when queued and when sent | `::test_no_consent_or_an_opt_out_means_no_message`, `test_review_p7.py::test_the_public_form…` |
+| Wording | Every message editable per channel; only the event's fields accepted; live preview with sample values marked as samples; SMS length and parts | `::test_wording_is_checked_before_it_is_saved` |
+| Dashboards | Procurement, inventory, assembly, sales, installation, warranty, maintenance and service, traceability, exceptions; every figure is the row count of a report and opens those rows; only figures the person may see | `test_reports.py::test_dashboards_show_only…` |
+| Reports | 18 reports; filters by date (SMET's dates), product, serial, customer, distributor, supplier, warehouse, project, status and report options; filters a report doesn't offer are refused | `test_reports.py::test_every_report_runs…`, `test_review_p7.py::test_report_dates_are_smet_dates` |
+| Downloads | CSV and Excel with `reports.export`, up to 10,000 rows, formula-safe, audited with the filters; refusals audited | `test_reports.py::test_downloads_need…`, `test_review_p7.py::test_every_report_downloads…` |
+| Search | Batteries, customers and suppliers, projects, service requests, warranty registrations, purchase and sales orders, quotations; each kind only with its view permission | `test_reports.py::test_search_finds_only…` |
+| Independent review | 3 high (Excel downloads failing, the stored password could be sent to another server, a message could be sent twice), 9 medium, 6 low; all fixed except one low recorded; 12 regression tests that fail without the fixes | `test_review_p7.py`, TEST_RESULTS.md |
+| Screens | Bell and inbox with settings; Messages (channels, wording, sent messages, opt-outs); Reports and report pages with filters and downloads; search in the menu; consent boxes on the public and staff forms; reminder rules | `phase7.spec.ts` |
+
 ## Phase 6: what was built
 
 | Area | What works | Evidence |
@@ -128,19 +147,28 @@ Nothing here has been sandbox-tested against an external provider or production-
 | Database setup | `python -m app.setup_db`: two databases, least-privilege logins, `.env` written | used by CI on Linux and Windows |
 | Web app | Sign-in, setup, forced password change, overview (team setup, roles in use, recent changes), users (count-card filters, add/edit/deactivate/reset), roles editor, audit log, company settings, system health; light/dark/system theme; phone layout; permission-aware navigation | Vitest (5), Playwright (2 journeys), design inspector at 1440/768/390 |
 
-## Verification results (2026-10-30, end of Phase 6)
+## Verification results (2026-11-01, end of Phase 7)
 
 See [docs/TEST_RESULTS.md](docs/TEST_RESULTS.md) for the commands and outputs.
 
-- Backend: 127 pytest tests passed (Phases 1–5: 109; Phase 6: 18 including review regressions); ruff clean; deprecation warnings treated as errors.
-- Frontend: oxlint and TypeScript clean, 7 Vitest tests, production build OK.
-- Browser: 6 Playwright journeys passed locally (Chromium) and in CI (Edge on Windows).
-- CI run 41055578800: every job green (Ubuntu and Windows backends, frontend, Edge on Windows, secret scan, dependency audit).
-- Independent reviews of Phases 2–3, 4, 5 and 6: every finding fixed or recorded with its reason (TEST_RESULTS.md).
+- Backend: 156 pytest tests passed (Phases 1–6: 127; Phase 7: 29 including review regressions); ruff clean.
+- Frontend: oxlint and TypeScript clean, 7 Vitest tests.
+- Browser: 7 Playwright journeys passed locally (Chromium) and in CI (Edge on Windows).
+- CI run 41287446892: every job green.
+- External messages: **mock-tested only**. Email, SMS and WhatsApp adapters are checked against recorded requests and a fake SMTP server; none has been run against a real or sandbox account, and nothing can leave the server while `EXTERNAL_SENDS` is off (the default).
+- Independent reviews of Phases 2–3, 4, 5, 6 and 7: every finding fixed or recorded with its reason (TEST_RESULTS.md).
+
+## Known limitations (Phase 7)
+
+- No provider is chosen or connected (questions 24, 39); WhatsApp delivery reports need a public webhook (Phase 8).
+- Customer texts go only to numbers in SMET's country (A33); customers abroad can be emailed.
+- Reminder periods follow the calendar, so the first repeat can come sooner than the period (A31).
+- Dashboards count on demand (about 45 small queries); fine for SMET's size, cached later if needed.
+- The object-storage adapter and malware-scan hook for files (§26) move to Phase 8 with hosting.
 
 ## Known limitations (Phase 6)
 
-- No notifications are sent yet: reminders and status changes are lists and dashboard lines until Phase 7 adds in-app notices (email, SMS and WhatsApp wait for approval).
+- Notifications arrived in Phase 7 (above).
 - Distributors and customers have no login of their own; the public form and SMET staff cover registration and requests (question 36).
 - Reset codes are recorded by hand: no supplier API is known (question 22).
 - Service requests have no response-time targets (question 35).

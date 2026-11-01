@@ -41,6 +41,10 @@ commissioning".
 | A28 | The public check shows the product, whether it is in service and the warranty state; dates only if SMET switches them on (question 20) | — |
 | A29 | Reset codes are typed in by an authorised person from the supplier; stored encrypted; erased 365 days after the alert closes. The system never generates, expires or clears a code (question 22) | The supplier offers an API |
 | A30 | A replaced battery goes to the "Service workshop" area of a warehouse; what happens next (repair, scrap, return to the supplier) is decided case by case (question 23) | SMET defines a returns process |
+| A31 | Reminders: maintenance visits are announced 14 days ahead; a reminder about something still late (supplier delivery, assembly order, maintenance visit, contract ending) repeats every 7 days; no escalation until SMET names a role and a number of days (question 37) | SMET sets them in Rules & numbering |
+| A32 | Customers get an SMS, WhatsApp or email only about their own service request or warranty registration, and only when they ticked "send me updates" (public forms) or told staff so (staff forms). No marketing messages (question 38) | SMET's consent wording or legal advice differs |
+| A33 | A phone number written locally (050 123 4567) is a UAE number (+971); the country code is a setting | SMET serves customers abroad |
+| A34 | Every external channel is off; email, SMS and WhatsApp can be tried in mock mode (recorded, not sent). Nothing leaves the server until whoever runs it sets EXTERNAL_SENDS and the owner approves a provider (question 24, question 39) | The owner approves a provider |
 | A23 | A QR label carries only a web address with a random code; anyone scanning it sees the serial number, the product and whether it is in service. Labels are printed from the browser on any printer; no paid QR service (questions 33, 34) | SMET wants more on the public page (warranty comes in Phase 6) |
 
 Technical choices (database, sign-in mechanism) are recorded for developers in
@@ -155,3 +159,12 @@ safe default, but they must be answered before the system is used for real.
 36. **Distributor and customer logins.** Should distributors register their sales and customers
     see their own batteries through their own login, rather than the public form and SMET staff?
     *(Default: not built; the public form and SMET staff cover it.)*
+37. **Reminders and escalation (Phase 7).** How many days ahead should maintenance visits be announced,
+    how often should a reminder about something late repeat, and after how many days late should it
+    also go to a manager (which role)? *(Default: A31, no escalation.)*
+38. **Customer messages (Phase 7).** Which updates may customers receive (service request status,
+    warranty decision, missing registration information), and what consent wording should the forms
+    use? *(Default: A32.)*
+39. **WhatsApp (Phase 7, only if WhatsApp is chosen in question 24).** WhatsApp sends only templates
+    approved by Meta in advance. Who at SMET will own the Meta business account and submit the
+    templates? *(Default: SMS when WhatsApp isn't set up.)*

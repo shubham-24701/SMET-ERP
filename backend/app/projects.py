@@ -686,6 +686,7 @@ def decide_change(change_id: uuid.UUID, verdict: Literal["approve", "reject"], b
         "project",
         c.project_id,
         f"{c.kind} change {c.status}",
+        {"change": [None, str(c.id)]},
         reason=body.reason,
     )
     db.commit()
@@ -877,6 +878,7 @@ def decide_sheet(sheet_id: uuid.UUID, verdict: Literal["approve", "reject"], bod
         "project",
         s.project_id,
         f"Requirement sheet v{s.version_no} {s.status}",
+        {"sheet": [None, str(s.id)]},
         reason=body.reason,
     )
     db.commit()

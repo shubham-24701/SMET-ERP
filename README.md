@@ -4,14 +4,15 @@ Battery Operations ERP for Smart Mechanical Equipment Trading LLC (SMET), built 
 the proposal *Secure Hive – Project Proposal – SMET v1.0*. One shared record for every battery, from
 supplier receipt through assembly, stock, sales, projects, dispatch, installation, warranty and service.
 
-**Status:** Phases 1–6 (0.5.0). Foundation (sign-in, users, configurable roles, append-only audit
+**Status:** Phases 1–7 (0.6.0). Foundation (sign-in, users, configurable roles, append-only audit
 log, settings); master data, purchasing and goods receipt with inspection, the stock ledger with
 reservations, counts and corrections; bills of materials, assembly orders, serial numbers and the
 final-inspection gate; enquiries, quotations with revisions, sales orders, projects with engineer-approved
 requirement sheets, and dispatch with delivery notes; battery banks, installation, commissioning and
 handover visits with evidence, QR labels and each battery's lifecycle; warranty policies and
 registrations, a public check and request page, maintenance contracts, service requests and
-maintenance reset codes. Notifications and reports follow; see
+maintenance reset codes; notifications in the app, email/SMS/WhatsApp adapters (off until approved),
+dashboards, filtered reports with CSV/Excel downloads, and search. Hardening and deployment follow; see
 [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md).
 
 ## Stack
@@ -75,8 +76,13 @@ Photographs and reports from site visits are stored in `backend\data\files` unle
 drive). Include that folder in backups. QR labels point to `PUBLIC_BASE_URL`; until it is set to
 SMET's public address, labels work only on this computer.
 
-`CODES_KEY` in `backend\.env` encrypts maintenance reset codes; `setup_db` writes it once. Back it
-up with `.env`: without it, recorded codes can't be read. The public page is `/verify`.
+`CODES_KEY` in `backend\.env` encrypts maintenance reset codes and `SECRETS_KEY` message-provider
+credentials; `setup_db` writes each once. Back them up with `.env`: without them, recorded codes and
+credentials can't be read. The public page is `/verify`.
+
+`EXTERNAL_SENDS` (off · sandbox · production) decides whether any email, SMS or WhatsApp may leave
+the server. Leave it unset (off) until the owner approves a provider; channels can still be tried in
+mock mode under Administration → Messages.
 
 ## Checks
 

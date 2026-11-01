@@ -252,11 +252,12 @@ def list_amc(
 
 @router.get("/amc/reminders")
 def amc_reminders(_: require("amc.view"), db: DB) -> dict:
-    """What needs chasing: maintenance visits in the next 14 days, overdue ones, and contracts to renew."""
+    """What needs chasing: maintenance visits due within the notice days, overdue ones, and contracts to renew."""
     today = date.today()
+    notice = int(rules(db)["amc_visit_notice_days"])
     open_ = SiteVisit.status.in_(("scheduled", "started"))
     up = db.scalars(select(SiteVisit).where(SiteVisit.amc_id.is_not(None), open_, SiteVisit.scheduled_on >= today,
-                                            SiteVisit.scheduled_on <= today + timedelta(days=14)).order_by(SiteVisit.scheduled_on)).all()  # fmt: skip
+                                            SiteVisit.scheduled_on <= today + timedelta(days=notice)).order_by(SiteVisit.scheduled_on)).all()  # fmt: skip
     late = db.scalars(select(SiteVisit).where(SiteVisit.amc_id.is_not(None), open_, SiteVisit.scheduled_on < today)
                       .order_by(SiteVisit.scheduled_on)).all()  # fmt: skip
     days = int(rules(db)["amc_renewal_notice_days"])
@@ -471,7 +472,7 @@ def sr_row(db: Session, sr: ServiceRequest, full: bool = False) -> dict:
         ).all()
         repl = db.get(Serial, sr.replacement_serial_id) if sr.replacement_serial_id else None
         loc = db.get(Location, s.location_id) if s and s.location_id else None
-        row |= {"contact_phone": sr.contact_phone, "preferred_visit": sr.preferred_visit,
+        row |= {"contact_phone": sr.contact_phone, "updates_consent": sr.updates_consent, "preferred_visit": sr.preferred_visit,
                 "bank": {"id": bank.id, "number": bank.number, "name": bank.name, "status": bank.status} if bank else None,
                 "battery": {"status": s.status, "item": item_ref(db.get(Item, s.item_id)), "location": label(db, loc) if loc else None,
                             "bank": (lambda b: {"id": b.id, "number": b.number} if b else None)(current_bank(db, s.id))} if s else None,
@@ -538,6 +539,7 @@ class SrIn(BaseModel):
     site_id: uuid.UUID | None = None
     contact_name: Short = ""
     contact_phone: Annotated[str, StringConstraints(strip_whitespace=True, max_length=60)] = ""
+    updates_consent: bool = False  # the contact agreed to status updates at that number or address
     issue: Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=4000)]
     priority: Literal["low", "normal", "high", "urgent"] = "normal"
     preferred_visit: Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)] = ""
@@ -603,6 +605,7 @@ class SrPatch(BaseModel):
     contact_phone: (
         Annotated[str, StringConstraints(strip_whitespace=True, max_length=60)] | None
     ) = None
+    updates_consent: bool | None = None
     preferred_visit: (
         Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)] | None
     ) = None
@@ -654,6 +657,7 @@ def move_sr(sr_id: uuid.UUID, body: StatusIn, p: require("service.create"), db: 
         )
     if body.to == "pending_action" and len(body.reason) < 3:
         raise field_error("reason", "Say what it is waiting for")
+    was = sr.status
     _move(sr, p.user, body.to, body.reason)
     sr.version += 1
     record(
@@ -663,6 +667,7 @@ def move_sr(sr_id: uuid.UUID, body: StatusIn, p: require("service.create"), db: 
         "service_request",
         sr.id,
         f"{sr.number} now {body.to.replace('_', ' ')}",
+        {"status": [was, body.to]},
         reason=body.reason,
     )
     db.commit()
