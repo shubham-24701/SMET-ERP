@@ -291,10 +291,10 @@ def test_smtp_sends_one_message_with_its_subject(monkeypatch):
 
 
 def test_wording_is_checked_before_it_is_saved(admin, user_with):
-    t = lambda **kw: admin.put(
-        f"{API}/messages/templates/stock.low/in_app",
-        json={"version": 0, "subject": "{item} low", "body": "x"} | kw,
-    )  # noqa: E731
+    def t(**kw):
+        body = {"version": 0, "subject": "{item} low", "body": "x"} | kw
+        return admin.put(f"{API}/messages/templates/stock.low/in_app", json=body)
+
     assert "Unknown field {price}" in t(body="Costs {price}").text
     assert "Braces only" in t(body="Odd { brace").text
     p = ok(admin.post(f"{API}/messages/templates/preview", json={"event": "stock.low", "channel": "sms", "body": "Low: {item} {nope}"}))  # fmt: skip
