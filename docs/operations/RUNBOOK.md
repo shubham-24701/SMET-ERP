@@ -11,6 +11,8 @@ For whoever runs SMET Operations day to day. Commands run in `backend/` unless s
 
 ## Every day
 
+- **Tools.** Backups need the PostgreSQL client tools (`pg_dump`, `pg_restore`) on PATH, of the
+  server's major version or newer; an older `pg_dump` refuses with "server version mismatch".
 - **Backup.** Schedule `uv run python -m app.backup create` once a night (Windows Task Scheduler or
   cron). It writes a database dump and a zip of the files to `BACKUP_DIR`, each with a `.sha256`.
   Copy the folder off the machine (another disk, or encrypted cloud storage). System health warns when
