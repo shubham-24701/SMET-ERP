@@ -7,11 +7,11 @@ Every result below was produced by running the command shown. Results that have 
 | Check | Command | Result |
 | --- | --- | --- |
 | Backend | ruff, `uv run pytest -q` | clean; **181 passed**, including `test_phase8.py` (backup round trip with real `pg_dump`/`pg_restore`, scanner refusal and failure, S3 against a stand-in client, trusted proxies, retention, system health, SMET's date, production HTTPS) and the security regressions below |
-| Frontend | `tsc -b`, oxlint, `vitest run` | clean; 7 passed |
-| Browser journeys | `npx playwright test` (local Chromium) | **8 passed**, with the CSRF token now replaced at sign-in |
+| Frontend | `tsc -b`, oxlint, `vitest run` | clean; 8 passed, including `lib.test.tsx` (an older, slower answer can't overwrite the newest; fails before the fix) |
+| Browser journeys | `npx playwright test` (local Chromium) | **8 passed** in three of four full runs, with the CSRF token now replaced at sign-in. One run had the Phase 2–3 journey fail (error not captured); it passed alone and in the next two full runs |
 | Load and concurrency | `uv run python -m tests.load_check` (400 items, 3,000 orders, 20,000 serials, 60,000 stock moves, 3,000 service requests, 30,000 notifications) | report pages 18–117 ms median; dashboards 255 ms median, 422 ms p95; 8 people at once: 160 requests in about 9 s, p95 1.4 s; two saves of the same record at once: [200, 409] |
 | Regression check | each security test against the code before its fix | M2, M3, L1 and L4 tests failed before and pass after; M1 was seen failing on the restored test database and passes after |
-| CI | GitHub Actions on `phase-8` | see below |
+| CI | GitHub Actions on `phase-8` | The Edge journey on Windows once waited 8 minutes for a battery bank that never appeared: the contract form had shown the first customer's (empty) bank list, which arrived after the chosen customer's. Fixed in the shared loading hook (`useApi` keeps only the newest answer). The backup round trip now runs on Linux (PostgreSQL 17 client) and Windows (the runner's own PostgreSQL) |
 
 The full security review table is in [security/SECURITY_CHECKLIST_111.md](security/SECURITY_CHECKLIST_111.md#independent-security-review-of-the-whole-app-2026-11-01).
 The load check ran in the cloud workspace (shared CPU), not on SMET's hardware: treat the numbers

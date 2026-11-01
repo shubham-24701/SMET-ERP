@@ -32,6 +32,7 @@ jobs:
       - run: uv run alembic upgrade head
       - name: PostgreSQL 17 client tools (pg_dump must not be older than the server) for the backup test
         run: |
+          sudo apt-get update -q
           sudo apt-get install -y -q postgresql-client-17
           echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
       - run: uv run pytest -q --junitxml=junit.xml

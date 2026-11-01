@@ -26,6 +26,10 @@ Security fixes (independent review, no critical or high findings)
 - `APP_ENV=production` refuses to start without `COOKIE_SECURE=true`; HTTPS answers carry HSTS.
 - The database owner's password no longer appears in the process list during backups.
 
+Fixed
+- A list that depends on an earlier choice (a customer's battery banks, for example) could show the
+  answer for the previous choice when that answer arrived late. Only the newest answer is shown now.
+
 Upgrade
 - `uv run alembic upgrade head` (migration 0011). Schedule the nightly backup (runbook).
 - Run first-time setup before the server is reachable from outside.
