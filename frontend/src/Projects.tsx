@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router'
 import { api } from './api'
 import { useAction, useApi, useCan, useMe, useWhen } from './lib'
 import { Back, Facts, ItemOptions, Status, day, newKey, num, qty, useItems, useWarehouses, type Page, type Ref } from './ops'
+import { InstallationPanel } from './Installation'
 import { useCustomers } from './Sales'
 import { Dialog, Field, FormError, PageHead, PageState, Pager, SelectField, TextareaField } from './ui'
 
@@ -214,6 +215,7 @@ export function ProjectPage() {
         ))}</ul>
       )}
 
+      {can('installation.view') && <InstallationPanel projectId={p.id} sites={p.sites!} />}
       <div className="panel-head section"><h2>Battery requirements</h2>{edit && p.sites && <button className="btn btn-secondary" onClick={() => setDialog('sheet')}>New requirement sheet</button>}</div>
       {p.sheets!.length === 0 ? <p className="empty-line">No requirement sheet yet. An engineer approves each before stock, purchases or assembly follow.</p> : p.sheets!.map((s) => {
         const mine = [s.prepared_by, ...s.editor_ids].includes(me.user.id) || s.editor_ids.includes(me.user.id)

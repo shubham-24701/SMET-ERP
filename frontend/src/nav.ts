@@ -1,9 +1,9 @@
 import {
   Activity, ArrowLeftRight, Barcode, Briefcase, Calculator, FileSignature, Inbox, ReceiptText, Send, Boxes, Building2, ClipboardCheck, ClipboardList, Factory, FileText, LayoutDashboard,
-  ListTree, Package, PackageCheck, ScrollText, Settings2, ShieldCheck, ShoppingCart, Truck, Users, Warehouse, type LucideIcon,
+  ListTree, MapPin, Package, ScanLine, Wrench, Layers, PackageCheck, ScrollText, Settings2, ShieldCheck, ShoppingCart, Truck, Users, Warehouse, type LucideIcon,
 } from 'lucide-react'
 
-/** `perm`: shown only to users holding it (the server enforces it regardless). */
+/** `perm`: shown only to users holding it, or one of `a|b` (the server enforces it regardless). */
 export type NavItem = { path: string; label: string; icon: LucideIcon; perm?: string }
 
 // Business modules join this list as each phase delivers them; nothing here is a placeholder.
@@ -23,6 +23,15 @@ export const NAV: { group: string; items: NavItem[] }[] = [
     items: [
       { path: '/projects', label: 'Projects', icon: Briefcase, perm: 'projects.view' },
       { path: '/projects/rules', label: 'Sizing rules', icon: Calculator, perm: 'projects.view' },
+    ],
+  },
+  {
+    group: 'Installation',
+    items: [
+      { path: '/installation/visits', label: 'Site visits', icon: MapPin, perm: 'installation.view' },
+      { path: '/installation/banks', label: 'Battery banks', icon: Layers, perm: 'installation.view' },
+      { path: '/trace', label: 'Find a battery', icon: ScanLine, perm: 'stock.view' },
+      { path: '/installation/checks', label: 'Site checks', icon: Wrench, perm: 'installation.view|installation.configure' },
     ],
   },
   {

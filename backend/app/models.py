@@ -477,6 +477,10 @@ class Serial(Base):
         ForeignKey("parties.id"), index=True
     )  # holder after dispatch
     site_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sites.id"), index=True)
+    # What the QR label carries: random, so labels can't be guessed or counted, and no internal id.
+    qr_token: Mapped[str] = mapped_column(
+        String(32), unique=True, server_default=text("replace(gen_random_uuid()::text, '-', '')")
+    )
     version: Mapped[int] = mapped_column(Integer, server_default="1")
     created_at: Mapped[datetime] = _ts()
 
@@ -1047,6 +1051,7 @@ class Dispatch(Base):
     dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     received_by: Mapped[str] = mapped_column(String(160), server_default="")
     delivered_on: Mapped[date | None] = mapped_column(Date)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # when recorded
     delivery_notes: Mapped[str] = mapped_column(Text, server_default="")
     cancel_reason: Mapped[str] = mapped_column(String(500), server_default="")
     created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
@@ -1076,3 +1081,126 @@ class DispatchLine(Base):
     # [{reservation_id, qty}] taken when sent: exactly what a cancellation gives back
     reservation_use: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
     note: Mapped[str] = mapped_column(String(300), server_default="")
+
+
+# ======================= Phase 5: installation and traceability =======================
+
+
+class BatteryBank(Base):
+    """A group of batteries working as one system at a site. Its three stages have separate dates:
+    installed, commissioned, handed over, each set only by a completed visit."""
+
+    __tablename__ = "battery_banks"
+    __table_args__ = (UniqueConstraint("site_id", "name"),)
+    id: Mapped[uuid.UUID] = _id()
+    number: Mapped[str] = mapped_column(String(30), unique=True)
+    site_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sites.id"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    configuration: Mapped[str] = mapped_column(String(300), server_default="")
+    # planned|installed|commissioned|handed_over
+    status: Mapped[str] = mapped_column(String(12), server_default="planned", index=True)
+    installed_on: Mapped[date | None] = mapped_column(Date)
+    commissioned_on: Mapped[date | None] = mapped_column(Date)
+    handed_over_on: Mapped[date | None] = mapped_column(Date)
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+    created_at: Mapped[datetime] = _ts()
+
+
+class BankPosition(Base):
+    """Which battery sat where, and when. Rows are never rewritten except to close them: a removal,
+    replacement or relocation ends one row and (except a removal) starts another."""
+
+    __tablename__ = "bank_positions"
+    __table_args__ = (
+        Index("one_place_per_battery", "serial_id", unique=True, postgresql_where=text("ended_at IS NULL")),
+        Index("one_battery_per_position", "bank_id", "position", unique=True,
+              postgresql_where=text("ended_at IS NULL")),
+    )  # fmt: skip
+    id: Mapped[uuid.UUID] = _id()
+    bank_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("battery_banks.id"), index=True)
+    serial_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("serials.id"), index=True)
+    position: Mapped[str] = mapped_column(String(40))
+    started_at: Mapped[datetime] = _ts()
+    start_reason: Mapped[str] = mapped_column(String(12))  # added|replacement|relocated
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    end_reason: Mapped[str] = mapped_column(
+        String(12), server_default=""
+    )  # removed|replaced|relocated
+    note: Mapped[str] = mapped_column(String(500), server_default="")
+    replaces_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("serials.id"))
+    visit_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("site_visits.id"))
+    by_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    ended_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+
+
+class StageCheck(Base):
+    """What SMET wants checked at each stage: a checklist line or a reading. Limits on a reading
+    apply only once confirmed, as at final inspection."""
+
+    __tablename__ = "stage_checks"
+    id: Mapped[uuid.UUID] = _id()
+    stage: Mapped[str] = mapped_column(
+        String(14), index=True
+    )  # installation|commissioning|handover
+    kind: Mapped[str] = mapped_column(String(8))  # check|reading
+    text: Mapped[str] = mapped_column(String(200))
+    unit: Mapped[str] = mapped_column(String(20), server_default="")
+    min_value: Mapped[float | None] = mapped_column(Numeric(14, 4))
+    max_value: Mapped[float | None] = mapped_column(Numeric(14, 4))
+    confirmed: Mapped[bool] = mapped_column(Boolean, server_default=false())
+    required: Mapped[bool] = mapped_column(Boolean, server_default=true())
+    sort: Mapped[int] = mapped_column(Integer, server_default="0")
+    active: Mapped[bool] = mapped_column(Boolean, server_default=true())
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+
+
+class SiteVisit(Base):
+    """A planned trip to a site for one stage (or other work), with its technicians. The work is
+    recorded on the visit; completing it moves the banks it covers to the next stage."""
+
+    __tablename__ = "site_visits"
+    id: Mapped[uuid.UUID] = _id()
+    number: Mapped[str] = mapped_column(String(30), unique=True)
+    site_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sites.id"), index=True)
+    stage: Mapped[str] = mapped_column(String(14))  # installation|commissioning|handover|other
+    bank_ids: Mapped[list[uuid.UUID]] = mapped_column(ARRAY(Uuid), server_default="{}")
+    scheduled_on: Mapped[date] = mapped_column(Date, index=True)
+    time_window: Mapped[str] = mapped_column(String(60), server_default="")
+    technician_ids: Mapped[list[uuid.UUID]] = mapped_column(ARRAY(Uuid), server_default="{}")
+    # scheduled|started|completed|cancelled
+    status: Mapped[str] = mapped_column(String(10), server_default="scheduled", index=True)
+    site_ready: Mapped[bool | None] = mapped_column(Boolean)
+    access_notes: Mapped[str] = mapped_column(Text, server_default="")
+    contacts: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    received_serials: Mapped[list[str]] = mapped_column(ARRAY(String(60)), server_default="{}")
+    checklist: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    readings: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    observations: Mapped[str] = mapped_column(Text, server_default="")
+    issues: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    acknowledgement: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    done_on: Mapped[date | None] = mapped_column(Date)
+    completed_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancel_reason: Mapped[str] = mapped_column(String(500), server_default="")
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = _ts()
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+
+
+class StoredFile(Base):
+    """A photograph, test report or signed acknowledgement. The bytes live on disk under a random
+    name; the hash proves they haven't changed. Files are never edited, only added."""
+
+    __tablename__ = "files"
+    __table_args__ = (Index("files_owner", "owner_type", "owner_id"),)
+    id: Mapped[uuid.UUID] = _id()
+    owner_type: Mapped[str] = mapped_column(String(20))  # visit
+    owner_id: Mapped[uuid.UUID] = mapped_column(Uuid)
+    kind: Mapped[str] = mapped_column(String(16))  # photo|test_report|acknowledgement|other
+    name: Mapped[str] = mapped_column(String(160))
+    content_type: Mapped[str] = mapped_column(String(40))
+    size: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64))
+    caption: Mapped[str] = mapped_column(String(300), server_default="")
+    uploaded_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    uploaded_at: Mapped[datetime] = _ts()

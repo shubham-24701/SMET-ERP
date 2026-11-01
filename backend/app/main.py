@@ -1,4 +1,5 @@
 import logging
+import re
 import secrets
 import time
 import uuid
@@ -12,7 +13,19 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app import assembly, dispatch, inventory, jobs, masters, procurement, projects, sales
+from app import (
+    assembly,
+    dispatch,
+    files,
+    installation,
+    inventory,
+    jobs,
+    masters,
+    procurement,
+    projects,
+    sales,
+    trace,
+)
 from app.admin import router as admin_router
 from app.audit import request_info
 from app.auth import CSRF_COOKIE, DB, require
@@ -59,7 +72,8 @@ app = FastAPI(
     redoc_url=None,
 )
 
-MAX_BODY = 1 * 2**20  # JSON only in Phase 1; file uploads get their own, larger limit
+MAX_BODY = 1 * 2**20  # JSON bodies
+UPLOAD_PATH = re.compile(r"^/api/v1/visits/[^/]+/files$")
 
 
 class BodyLimit:
@@ -73,7 +87,10 @@ class BodyLimit:
         if scope["type"] != "http" or scope["method"] not in UNSAFE_METHODS:
             return await self.app(scope, receive, send)
         too_large = JSONResponse({"detail": "That request is too large."}, 413)
-        if int(dict(scope["headers"]).get(b"content-length") or 0) > MAX_BODY:
+        limit = MAX_BODY
+        if UPLOAD_PATH.match(scope["path"]):  # a file plus the form around it
+            limit = settings.max_upload_mb * 2**20 + 64 * 2**10
+        if int(dict(scope["headers"]).get(b"content-length") or 0) > limit:
             return await too_large(scope, receive, send)
         body, message = bytearray(), {"more_body": True}
         while message.get("more_body"):
@@ -81,7 +98,7 @@ class BodyLimit:
             if message["type"] != "http.request":
                 break  # the client went away; let the app see that
             body += message.get("body", b"")
-            if len(body) > MAX_BODY:
+            if len(body) > limit:
                 return await too_large(scope, receive, send)
         first = {"type": "http.request", "body": bytes(body), "more_body": False}
         if message["type"] != "http.request":
@@ -137,8 +154,20 @@ app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts) 
 api = APIRouter(prefix="/api/v1")
 api.include_router(auth_router)
 api.include_router(admin_router)
-for module in (masters, procurement, inventory, assembly, sales, projects, dispatch):
+for module in (
+    masters,
+    procurement,
+    inventory,
+    assembly,
+    sales,
+    projects,
+    dispatch,
+    installation,
+    files,
+    trace,
+):
     api.include_router(module.router)
+api.include_router(trace.public)
 
 
 @api.get("/health/live", tags=["health"])

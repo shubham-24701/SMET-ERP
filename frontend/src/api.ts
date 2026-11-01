@@ -57,6 +57,22 @@ export async function download(path: string, filename: string) {
   URL.revokeObjectURL(url)
 }
 
+/** A file and its form fields to /api/v1 (multipart), with the CSRF header. */
+export async function upload<T>(path: string, form: FormData): Promise<T> {
+  let res: Response
+  try {
+    res = await fetch(`/api/v1${path}`, { method: 'POST', headers: { 'X-CSRF-Token': await csrfToken() }, credentials: 'same-origin', body: form })
+  } catch {
+    throw new ApiError(0, 'Cannot reach the server. Is the backend running?')
+  }
+  const data: unknown = await res.json().catch(() => null)
+  if (!res.ok) {
+    if (res.status === 401) window.dispatchEvent(new Event('session-expired'))
+    throw toError(res.status, data)
+  }
+  return data as T
+}
+
 /** JSON call to /api/v1. Adds the CSRF header on writes; a 401 tells the app the session ended. */
 export async function api<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
   const method = init.method ?? 'GET'

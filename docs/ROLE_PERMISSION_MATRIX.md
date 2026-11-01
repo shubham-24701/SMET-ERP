@@ -54,8 +54,8 @@ changes in the audit log; a two-person rule for permission changes can be added 
 | Quality Inspector | Staff | Inspections, pass / hold / rework, approved test parameters | items.view, warehouses.view, purchasing.view, bom.view, assembly.view, stock.view, quality.create/configure | 3 |
 | Sales Officer | Staff | Enquiries, quotations, customers, sales orders | items.view, parties.view/edit, stock.view, sales.view/create, projects.view, dispatch.view (Phase 4) | 4 |
 | Sales Approver | Staff | Commercial approvals, discounts, quotation approval | items.view, parties.view, stock.view, sales.view/approve, projects.view | 4 |
-| Project Manager | Staff | Projects, site requirements, milestones, documents, installation coordination | items.view, parties.view, stock.view, warehouses.view, sales.view, projects.view/create, dispatch.view | 4–5 |
-| Installation Technician | Staff | Assigned visits, installation records, commissioning, handover evidence | — | 5 |
+| Project Manager | Staff | Projects, site requirements, milestones, documents, installation coordination | items.view, parties.view, stock.view, warehouses.view, sales.view, projects.view/create, dispatch.view, installation.view/create | 4–5 |
+| Installation Technician | Staff | Assigned visits, installation records, commissioning, handover evidence | items.view, stock.view, projects.view, dispatch.view, installation.view/record | 5 |
 | Warranty Administrator | Staff | Registration review, activation, permitted corrections | — | 6 |
 | Service Coordinator | Staff | Service intake, coverage checks, assignments, scheduling | — | 6 |
 | Service Technician | Staff | Assigned jobs, diagnostics, work performed, parts used | — | 6 |
@@ -115,3 +115,8 @@ Raising a purchase request from a sales order (`sales.create`) or a project (`pr
 intended: a purchase request is only a request; the purchase order it may lead to still needs
 `purchasing.create` and an approver. An order reserves for itself with `sales.create`, a project with
 `projects.create`.
+
+Installation work is recorded by the technicians named on a visit (`installation.record`); a
+coordinator (`installation.create`) can record for them. A technician changes a bank only during a
+visit they are on that covers the bank. The public QR check needs no sign-in and shows only the
+serial number, the product and whether it is in service.

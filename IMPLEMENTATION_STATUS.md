@@ -1,8 +1,8 @@
 # Implementation status
 
-**Updated:** 2026-10-30 · **Version:** 0.3.0 · **Current phase:** 4 (sales, projects, dispatch)
-built and verified locally and in CI, on top of Phases 1–3 (pull request #1 to `main`). Phase 5
-(installation and traceability) next on the owner's go-ahead.
+**Updated:** 2026-10-30 · **Version:** 0.4.0 · **Current phase:** 5 (installation and traceability)
+built and verified locally and in CI, on top of Phase 4 (pull request #2, itself on #1). Phase 6 (warranty and
+after-sales) next on the owner's go-ahead.
 
 Labels used below: **Verified** = automated tests pass locally (and in CI once the run is green);
 **Built, not yet verified** = code exists, the check has not run; **Planned** = not built.
@@ -30,11 +30,29 @@ Nothing here has been sandbox-tested against an external provider or production-
 | 2 | Master data (models, items, units, parties, warehouses, numbering, business rules), suppliers & procurement (requests, quotations and comparison, POs with approval, receipts & inspection, returns), inventory (ledger, reservations, transfers, counts, corrections, reconciliation, serials) | **Verified (local + CI)** |
 | 3 | Assembly & quality: BOM versions, assembly orders, reserve/issue/consume/return, serial assignment with component links, configurable checklists and test parameters, pass/hold/rework, finished-stock receipt only through a passing inspection | **Verified (local + CI)** |
 | 4 | Sales & projects: enquiries, quotations with revisions and approval, sales orders, projects/sites/surveys, requirement sheets with engineering approval and SMET-supplied sizing rules, procurement & assembly links, dispatch and delivery | **Verified (local + CI)** |
-| 5 | Installation & traceability: visits, commissioning, handover, QR labels, battery banks, lifecycle timeline | Planned |
+| 5 | Installation & traceability: visits, commissioning, handover, QR labels, battery banks, lifecycle timeline | **Verified (local + CI)** |
 | 6 | Warranty & after-sales: registration/activation, public verification portal, AMC, service requests, replacements, maintenance alerts and reset codes (manual process until a supplier API is confirmed) | Planned |
 | 7 | Notifications (in-app; email/SMS/WhatsApp adapters off until approved), dashboards, reports, exports, file attachments | Planned |
 | 8 | Hardening: 111-checkpoint evidence, performance and concurrency tests, backup/restore drill, deployment package, incident process | Planned |
 | 9 | End-to-end verification, release readiness, activation checklist | Planned |
+
+## Phase 5: what was built
+
+| Area | What works | Evidence |
+| --- | --- | --- |
+| Battery banks | A bank per system at a site, with configuration; batteries delivered to that site placed in named positions; remove, replace and move with a reason; every placement kept with who, when, why and the battery replaced. One battery in one place, one battery per position (database indexes) | `test_installation.py::test_bank_changes_keep_every_battery_s_history` |
+| Stages | planned → installed → commissioned → handed over, each only by completing a visit of that stage, each with its own date, never earlier than the one before; a battery takes its bank's stage (delivered, installed, commissioned, in service, removed); no battery joins a live bank except as a replacement recorded on a visit | `::test_a_bank_goes_from_delivery_to_handover_one_stage_at_a_time`, `test_review_p5.py::test_no_battery_skips_a_stage` |
+| Visits | Scheduling with technicians, time, site readiness, access requirements and contacts; reschedule, reassign, cancel with a reason; technicians record only their own visits | same, `test_security_matrix.py` |
+| Visit record | Serials received at the site (only ones delivered there), SMET's checklist, readings with the limits that applied, observations, issues and corrective actions, the customer's acknowledgement; frozen once completed. Issues can't be deleted or quietly closed | same, `test_review_p5.py::test_saving_a_visit_never_drops…` |
+| Completion | Refused, with the list of what is missing, until: every required check done, required readings taken and inside limits SMET confirmed, photographs per the evidence policy, every installed battery's receipt confirmed, at handover the customer's name and date and no open issue (configurable) | `::test_a_bank_goes_from_delivery_to_handover…` |
+| Site checks | SMET's checklist lines and readings per stage; limits apply only once marked confirmed (none are built in) | same |
+| Evidence | Photographs, test reports and signed acknowledgements; type read from the content (JPEG, PNG, WebP, PDF), 10 MB limit, stored outside the code folder under a random name with SHA-256; downloads need installation.view | `::test_evidence_files_are_checked_by_content_and_kept_safely` |
+| Milestones | When every bank of a project has reached a stage, its milestone of that kind is marked done | `::test_a_bank_goes_from_delivery_to_handover…` |
+| QR labels | Printed from the browser on any printer (90 × 40 mm), QR made locally (segno, no paid service); the code is a random token, not an id | `::test_qr_labels_lead_to_a_public_check…` |
+| Public check | `/v/<token>`: serial, product and whether installed, in service, removed or withdrawn; no customer, site or internal id; 30 checks a minute per address | same, `test_review_p5.py::test_the_public_check_tells_installed…` |
+| Traceability | Find by scanned label, serial or supplier serial (handheld scanner or phone camera where the browser can read QR codes); one timeline per battery from receipt through inspection, assembly, dispatch, delivery, bank placements and stages, read from the records that own each event; where it is now | `::test_bank_changes_keep_every_battery_s_history`, `phase5.spec.ts` |
+| Independent review | 2 high (a technician could move a battery into a bank outside their visit; a battery could join a live bank and skip installation), 2 medium, 5 low; all fixed with regression tests except the proxy address for rate limits (deployment, P8) | `test_review_p5.py`, TEST_RESULTS.md |
+| Screens | Site visits (to do, mine), the visit record for technicians at phone width, battery banks, site checks, find a battery, labels, the public check; installation panel on the project; lifecycle on the battery; evidence rules in Rules & numbering | `phase5.spec.ts` |
 
 ## Phase 4: what was built
 
@@ -91,22 +109,30 @@ Nothing here has been sandbox-tested against an external provider or production-
 | Database setup | `python -m app.setup_db`: two databases, least-privilege logins, `.env` written | used by CI on Linux and Windows |
 | Web app | Sign-in, setup, forced password change, overview (team setup, roles in use, recent changes), users (count-card filters, add/edit/deactivate/reset), roles editor, audit log, company settings, system health; light/dark/system theme; phone layout; permission-aware navigation | Vitest (5), Playwright (2 journeys), design inspector at 1440/768/390 |
 
-## Verification results (2026-10-30, end of Phase 4)
+## Verification results (2026-10-30, end of Phase 5)
 
 See [docs/TEST_RESULTS.md](docs/TEST_RESULTS.md) for the commands and outputs.
 
-- Backend: 100 pytest tests passed (53 Phase 1, 29 Phases 2–3, 18 Phase 4 incl. review regressions); ruff clean; deprecation warnings treated as errors.
-- Frontend: oxlint and TypeScript clean, 7 Vitest tests, production build OK.
-- Browser: 4 Playwright journeys passed locally (Chromium), including Phases 2–3 and Phase 4.
-- CI (GitHub Actions, public repository since 2026-10-30): every job green on the Phase 1 branch and on
-  this branch: Ubuntu and Windows backends, frontend, Edge on Windows, secret scan, dependency audit.
-- Independent review of Phases 2–3: 2 high, 6 medium and 9 low findings; every one fixed or recorded with its reason (TEST_RESULTS.md).
+- Backend: 109 pytest tests passed (53 Phase 1, 29 Phases 2–3, 18 Phase 4, 9 Phase 5, review regressions included); ruff clean; deprecation warnings treated as errors.
+- Frontend: oxlint and TypeScript clean, 7 Vitest tests, production build OK; no known vulnerabilities in runtime dependencies (pip-audit, npm audit).
+- Browser: 5 Playwright journeys passed locally (Chromium) and in CI (Edge on Windows).
+- CI run 41047826130: every job green (Ubuntu and Windows backends, frontend, Edge on Windows, secret scan, dependency audit).
+- Independent reviews: Phases 2–3, Phase 4 and Phase 5 findings fixed or recorded with their reasons (TEST_RESULTS.md).
+
+## Known limitations (Phase 5)
+
+- Warranty activation at handover, distributor-installed batteries and their registration come with warranties in Phase 6; handover dates are recorded ready for it.
+- A battery taken out of a bank stays at the site as "removed" until a service return or replacement flow (Phase 6) brings it back to stock.
+- Labels point to `PUBLIC_BASE_URL`; until SMET has a public address (question 34) they only work on this computer.
+- The public check's rate limit counts by client address; behind a reverse proxy it must read the proxy's forwarded address first (P8, checkpoint 4).
+- Reading QR codes with the camera needs a browser that supports it (Chrome and Edge on Android, Safari); elsewhere a phone's camera app or a handheld scanner opens the label.
+- Visit lists inside a project and a bank's history (last 200 placements) are not paginated; sizes per project stay small (P8).
 
 ## Known limitations (Phase 4)
 
 - Sales orders come only from accepted quotations; a direct order (for example a distributor's repeat order) needs a quotation first.
 - Installation, commissioning and AMC lines are sold and listed; their work is recorded in Phases 5–6.
-- Supporting documents and site photos wait for file storage (Phase 7).
+- Supporting documents for sales and projects wait for file storage (Phase 7); site photographs are stored from Phase 5.
 - No sizing rule is shipped: quantities are typed in until SMET supplies its engineering rules (question 15).
 
 ## Known limitations (Phases 2–3)

@@ -429,12 +429,15 @@ export function WarehousesPage() {
 
 // ---------- business rules and document numbering ----------
 
-type Rules = { po_auto_approve_up_to: string | number | null; po_self_approval: boolean; adjustment_self_approval: boolean }
+type Rules = { po_auto_approve_up_to: string | number | null; po_self_approval: boolean; adjustment_self_approval: boolean
+  install_photos_min: number; commission_photos_min: number; handover_photos_min: number; handover_with_open_issues: boolean }
 type Seq = { doc_type: string; prefix: string; padding: number; yearly: boolean; next: string }
 const DOCS: Record<string, string> = {
   purchase_request: 'Purchase requests', supplier_quote: 'Supplier quotations', purchase_order: 'Purchase orders',
   goods_receipt: 'Goods receipts', supplier_return: 'Returns to suppliers', adjustment: 'Stock corrections',
   stock_count: 'Stock counts', assembly_order: 'Assembly orders', serial: 'Battery serial numbers',
+  enquiry: 'Enquiries', quotation: 'Quotations', sales_order: 'Sales orders', project: 'Projects', dispatch: 'Dispatches',
+  battery_bank: 'Battery banks', site_visit: 'Site visits',
 }
 
 export function RulesPage() {
@@ -467,6 +470,27 @@ export function RulesPage() {
           <TextareaField label="Reason for the change" name="reason" maxLength={500} />
           <FormError message={action.busy === 'rules' ? '' : action.error} />
           {edit && <button className="btn btn-primary" disabled={!!action.busy}>Save rules</button>}
+        </fieldset>
+      </form>
+      <form className="settings-row" noValidate onSubmit={(e) => {
+        e.preventDefault()
+        const fd = new FormData(e.currentTarget)
+        const n = (k: string) => Number(fd.get(k) ?? 0)
+        setFields({})
+        void action.run('evidence', () => api('/rules', { method: 'PATCH', body: { version: rules.data!.version, install_photos_min: n('install'), commission_photos_min: n('commission'),
+          handover_photos_min: n('handover'), handover_with_open_issues: fd.get('open_issues') === 'on', reason: fd.get('reason') } })
+          .catch((err) => { setFields(fieldsOf(err)); throw err }))
+      }}>
+        <div><h2>Installation evidence</h2><p className="muted">What a visit needs before it can be completed, besides SMET's site checks (open questions 16 and 31).</p></div>
+        <fieldset className="settings-panel plain" disabled={!edit}>
+          <div className="grid-fields">
+            <Field label="Photographs at installation" name="install" type="number" min={0} max={20} defaultValue={r.install_photos_min} error={fields.install_photos_min} />
+            <Field label="At commissioning" name="commission" type="number" min={0} max={20} defaultValue={r.commission_photos_min} error={fields.commission_photos_min} />
+            <Field label="At handover" name="handover" type="number" min={0} max={20} defaultValue={r.handover_photos_min} error={fields.handover_photos_min} />
+          </div>
+          <label className="check"><input type="checkbox" name="open_issues" defaultChecked={r.handover_with_open_issues} /> <span>A handover may complete with issues still open on its visit</span></label>
+          <TextareaField label="Reason for the change" name="reason" maxLength={500} />
+          {edit && <button className="btn btn-primary" disabled={!!action.busy}>Save evidence rules</button>}
         </fieldset>
       </form>
       <section className="settings-row">

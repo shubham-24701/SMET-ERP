@@ -60,6 +60,10 @@ PERMISSIONS: dict[str, tuple[str, str]] = {
     "projects.configure": ("Projects", "Set battery-sizing rules"),
     "dispatch.view": ("Dispatch", "See dispatches and delivery notes"),
     "dispatch.create": ("Dispatch", "Plan and send dispatches, record deliveries and discrepancies, cancel dispatches"),
+    "installation.view": ("Installation", "See battery banks, site visits, their records and evidence"),
+    "installation.create": ("Installation", "Plan battery banks, schedule visits and assign technicians, change batteries in a bank"),
+    "installation.record": ("Installation", "Record work on visits you are assigned to: serials, checklists, readings, photos, completion"),
+    "installation.configure": ("Installation", "Set the installation, commissioning and handover checks and the evidence policy"),
 }  # fmt: skip
 
 CONFIGURE_PERMS = [p for p in PERMISSIONS if p.endswith(".configure")]
@@ -114,9 +118,9 @@ TEMPLATES: dict[str, tuple[str, str, str, list[str]]] = {
     "sales_approver": ("Sales Approver", "internal",
         "Commercial approvals, discounts and quotation approval.", ["items.view", "parties.view", "stock.view", "sales.view", "sales.approve", "projects.view"]),
     "project_manager": ("Project Manager", "internal",
-        "Projects, site requirements, milestones, documents and installation coordination.", ["items.view", "parties.view", "stock.view", "warehouses.view", "sales.view", "projects.view", "projects.create", "dispatch.view"]),
+        "Projects, site requirements, milestones, documents and installation coordination.", ["items.view", "parties.view", "stock.view", "warehouses.view", "sales.view", "projects.view", "projects.create", "dispatch.view", "installation.view", "installation.create"]),
     "installation_technician": ("Installation Technician", "internal",
-        "Assigned visits, installation records, commissioning checklists and handover evidence.", []),
+        "Assigned visits, installation records, commissioning checklists and handover evidence.", ["items.view", "stock.view", "projects.view", "dispatch.view", "installation.view", "installation.record"]),
     "warranty_admin": ("Warranty Administrator", "internal",
         "Registration review, warranty activation and permitted corrections.", []),
     "service_coordinator": ("Service Coordinator", "internal",

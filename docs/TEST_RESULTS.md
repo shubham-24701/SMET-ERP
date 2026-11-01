@@ -2,6 +2,32 @@
 
 Every result below was produced by running the command shown. Results that have not run yet say so.
 
+## 2026-10-30 · Phase 5 · local and CI
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Backend | `uv run ruff check .`, `ruff format --check .`, `uv run pytest -q -W error::DeprecationWarning` | clean; **109 passed** (100 before Phase 5, 5 Phase 5, 4 review regressions) |
+| Migrations | downgrade to 0004, upgrade, `alembic check` | clean; 0007 Phase 5 |
+| Privileges | `has_table_privilege('smet_app', …)` | no DELETE on `bank_positions`, `site_visits`, `battery_banks`, `files`; no UPDATE on `files` |
+| Frontend | lint, typecheck, Vitest, build | clean; 7 passed; JS 572 kB (149 kB gzipped) |
+| Dependencies | `pip-audit` (runtime), `npm audit --omit=dev` | no known vulnerabilities |
+| Browser journeys | `npx playwright test` (local Chromium) | **5 passed**; `phase5.spec.ts`: coordinator and technician in two browsers: bank planned, visit scheduled, batteries placed, completion refused with the reason and then completed with checklist and photo, commissioning with a reading outside the confirmed limits flagged, lifecycle on the battery, label printed, public check in a third browser without the customer's name or site, find by scanned label, visit at phone width without sideways scroll |
+
+### Independent review of Phase 5 (2026-10-30)
+
+| # | Severity | Finding | Fix | Regression test |
+| --- | --- | --- | --- | --- |
+| 1 | High | A technician could move a battery from a bank on their visit into any bank of the same customer | The destination must be on the visit too | `test_a_technician_moves_batteries_only_into_banks_their_visit_covers` |
+| 2 | High | A battery added to, or moved into, an installed or handed-over bank took that stage without any check | Adding only to planned banks; moves only between banks at the same stage; a replacement into a live bank is recorded on a visit | `test_no_battery_skips_a_stage` |
+| 3 | Medium | Saving the visit replaced its issues: open issues could be deleted, or closed without a record of who and when | Issues can only be added or reworded; closing is its own action | `test_saving_a_visit_never_drops_or_quietly_closes_an_issue` |
+| 4 | Medium | After a refused completion the form kept an old version, so every later save failed as "changed by someone else" | The page reloads after the save, whether or not completion is accepted | `phase5.spec.ts` (completion refused, then completed) |
+| 5 | Low | The public check called an installed but uncommissioned battery "in service", and a removed one "not yet installed" | Separate wording for installed and removed | `test_the_public_check_tells_installed…` |
+| 6 | Low | Two opposite moves at once could deadlock; two renames to the same name at once could give a 500 | Banks locked in id order; the site locked for renames | code review |
+| 7 | Low | Technicians could not replace, move or remove batteries from the visit page | Actions on each position of the visit's banks | `phase5.spec.ts` (screen), code review |
+| 8 | Low | Behind a reverse proxy, every public check would share the proxy's address for the rate limit | Recorded for deployment (P8, checkpoint 4) | — |
+| 9 | Low | Some stock moves appeared on the timeline as raw words ("Accept") | Named | code review |
+| 10 | Medium (found by CI on Windows) | After Save, clicking Save and complete before the page had reloaded sent the old version and was refused as a conflict | The form remembers the version its own save returned | `phase5.spec.ts` slows the reload by 1.5 s; failed before the fix, passes after |
+
 ## 2026-10-30 · Phase 4 · local and CI
 
 | Check | Command | Result |

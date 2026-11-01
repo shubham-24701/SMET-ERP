@@ -113,7 +113,8 @@ def seed_reference_data(db: Session) -> None:
 SEQUENCES = {"purchase_request": "PR", "supplier_quote": "SQ", "purchase_order": "PO",
              "goods_receipt": "GRN", "supplier_return": "SRN", "adjustment": "ADJ",
              "stock_count": "CNT", "assembly_order": "AO", "serial": "SMET", "enquiry": "ENQ",
-             "quotation": "QT", "sales_order": "SO", "project": "PRJ", "dispatch": "DN"}  # fmt: skip
+             "quotation": "QT", "sales_order": "SO", "project": "PRJ", "dispatch": "DN",
+             "battery_bank": "BNK", "site_visit": "VIS"}  # fmt: skip
 
 
 def next_number(db: Session, doc_type: str) -> str:
@@ -151,6 +152,11 @@ RULE_DEFAULTS: dict = {
     "quote_max_discount_pct": 0,
     "quote_self_approval": False,
     "quote_valid_days": 30,  # default validity of a new quotation (question 10b)
+    # Photographs a visit needs before it can complete (assumption A20, question 31).
+    "install_photos_min": 1,
+    "commission_photos_min": 0,
+    "handover_photos_min": 0,
+    "handover_with_open_issues": False,  # may a handover complete with open issues on its visit?
 }
 
 
@@ -173,6 +179,10 @@ class RulesPatch(BaseModel):
     ) = None
     quote_self_approval: bool | None = None
     quote_valid_days: int | None = Field(default=None, ge=1, le=365)
+    install_photos_min: int | None = Field(default=None, ge=0, le=20)
+    commission_photos_min: int | None = Field(default=None, ge=0, le=20)
+    handover_photos_min: int | None = Field(default=None, ge=0, le=20)
+    handover_with_open_issues: bool | None = None
     reason: Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)] = ""
 
 

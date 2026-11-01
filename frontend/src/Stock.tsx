@@ -1,3 +1,4 @@
+import { Lifecycle } from './Installation'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { api, download } from './api'
@@ -233,7 +234,9 @@ export function SerialPage() {
   return (
     <>
       <Back to="/stock/serials">Serial numbers</Back>
-      <PageHead title={s.serial} intro={`${s.item.code} · ${s.item.name}`} />
+      <PageHead title={s.serial} intro={`${s.item.code} · ${s.item.name}`}>
+        <Link className="btn btn-secondary" target="_blank" to={`/print/labels?ids=${s.id}`}>Print label</Link>
+      </PageHead>
       <Facts rows={[['Status', <Status s={s.status} />], ['Where', s.location ?? 'Not in stock'], ['Supplier serial', s.supplier_serial ?? '—'],
         ['Bought on', s.purchase_order ? <Link to={`/purchasing/orders/${s.purchase_order.id}`}>{s.purchase_order.number}</Link> : '—'],
         ['Built into', s.built_into ? <Link to={`/stock/serials/${s.built_into.id}`}>{s.built_into.serial}</Link> : '—']]} />
@@ -258,10 +261,7 @@ export function SerialPage() {
           ))}
         </>
       )}
-      <h2 className="section">History</h2>
-      <ul className="feed panel panel-wide">
-        {s.moves.map((m) => <li key={m.id}><span><strong>{MOVE_KIND[m.kind] ?? m.kind}</strong><span className="small muted">{m.from ?? 'In'} → {m.to ?? 'Out'}{m.doc_number && ` · ${m.doc_number}`} · {m.user}</span></span><span className="stamp">{when(m.at)}</span></li>)}
-      </ul>
+      <Lifecycle id={s.id} />
     </>
   )
 }

@@ -490,6 +490,7 @@ def deliver(
                 select(Serial).where(Serial.serial.in_(set(ln.serials) - set(ln.rejected_serials)))
             ):
                 s.status = "delivered"
+    d.delivered_at = utcnow()
     d.status, d.received_by, d.delivered_on, d.delivery_notes = (
         "delivered",
         body.received_by,
