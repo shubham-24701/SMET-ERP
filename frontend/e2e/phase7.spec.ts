@@ -58,8 +58,11 @@ test('notifications, mock messages, reports with filters and export, and search'
   const cell = await api(page, 'POST', '/items', { code: `C7-${s}`, name: '12 V 100 Ah battery', kind: 'battery_unit', unit_code: 'PCS', tracking: 'serial' })
   let po = await api(page, 'POST', '/purchase-orders', { supplier_id: sup.id, currency: 'AED', lines: [{ item_id: cell.id, qty: 10, unit_price: 400 }] })
   po = await api(page, 'POST', `/purchase-orders/${po.id}/submit`, { version: po.version })
-  await chen.reload()
-  await expect(chen.getByRole('link', { name: /Notifications, \d+ unread/ })).toBeVisible({ timeout: 15_000 })
+  // The worker builds the notice just after the commit; the bell checks on each page load.
+  await expect(async () => {
+    await chen.reload()
+    await expect(chen.getByRole('link', { name: /Notifications, \d+ unread/ })).toBeVisible({ timeout: 2_000 })
+  }).toPass({ timeout: 60_000 })
   await chen.getByRole('link', { name: /Notifications/ }).click()
   await expect(chen.getByRole('link', { name: `Please approve ${po.number}` })).toBeVisible()
   await shot(chen, '52-notifications')

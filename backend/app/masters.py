@@ -197,7 +197,8 @@ def company_today(db: Session) -> date:
 
 
 def rules(db: Session) -> dict:
-    return RULE_DEFAULTS | (db.get(Company, 1).rules or {})
+    c = db.get(Company, 1)  # None before first-run setup: the worker's checks still run
+    return RULE_DEFAULTS | ((c.rules if c else None) or {})
 
 
 class RulesPatch(BaseModel):
