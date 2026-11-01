@@ -59,6 +59,7 @@ jobs:
         run: |
           Get-Service -Name "postgresql*" | Set-Service -StartupType Manual -PassThru | Start-Service
           & "$env:PGBIN\pg_isready.exe" -h 127.0.0.1 -t 60
+          "$env:PGBIN" >> $env:GITHUB_PATH  # pg_dump and pg_restore for the backup test
       - run: pip install uv
       - run: uv sync --locked
       - run: uv run python -m app.setup_db --admin-url "host=127.0.0.1 port=5432 user=postgres password=root dbname=postgres"
