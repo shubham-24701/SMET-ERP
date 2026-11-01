@@ -103,9 +103,23 @@ New stock movement kinds: `service_receipt` (battery into the workshop), `servic
 customer), `service_use` (a part used on a job), `service_replacement` (a battery sent as a
 replacement). Every warehouse gets a "Service workshop" area (purpose `repair`).
 
+## Phase 7 tables
+
+| Table | Holds | Key rules |
+| --- | --- | --- |
+| `notifications` | One in-app message for one person: event, title, text, link to the record, read time | (person, key) unique, so one event reaches a person once; deleted with the user |
+| `message_templates` | The wording of an event on a channel (in app, email, SMS, WhatsApp), the Meta template name for WhatsApp, on or off | (event, channel) unique; only fields listed for the event are accepted; a missing row means the built-in wording |
+| `message_providers` | Per channel: provider, mode (off, mock, sandbox, production), settings, the credential **encrypted** (Fernet, SECRETS_KEY), test recipient, last connection test | The credential is never returned; the server's EXTERNAL_SENDS caps the mode |
+| `message_deliveries` | Each external message: event, channel, provider, mode, recipient (shown masked), address actually used, subject, text, template parameters, status (queued, sending, sent, delivered, failed, blocked, skipped, unknown), attempts, provider reference, error | `key` unique: never queued twice; a send interrupted mid-call becomes `unknown`, not resent |
+| `message_opt_outs` | Channel and normalised address that must not be messaged, with the reason | Checked before every message |
+| `users.notify_email`, `.muted_events` | Each person's choices | |
+| `service_requests.updates_consent`, `warranty_registrations.updates_consent` | The customer agreed to updates at the contact given | Without it no customer message is queued |
+
+Dashboards and reports read the tables above; they store nothing of their own.
+
 ## Planned entities (from the proposal, by phase)
 
-Phases 2 to 6 are built (above).
+Phases 2 to 7 are built (above); file attachments arrived in Phase 5.
 
 - **4** enquiries, quotations and immutable revisions, sales orders; projects, sites, surveys,
   requirement sheets, milestones, tasks, scope changes; dispatches, lines with exact serials,

@@ -134,3 +134,17 @@ serial number, the product and whether it is in service.
 Reset-code access is `codes.reveal`, an ordinary business permission: the administrator grants it
 without holding it, so the administrator never sees a code. Nobody approves a warranty registration
 they submitted unless SMET allows it in Rules & numbering.
+
+### Phase 7
+
+| Permission | Allows |
+| --- | --- |
+| `notifications.view` | See the log of email, SMS and WhatsApp messages, recipients masked |
+| `notifications.configure` | Set up channels and credentials, change message wording, manage opt-outs, send a failed message again |
+| `reports.export` | Download reports as CSV or Excel (audited); seeing a report needs its area's view permission |
+
+The System Administrator gets both `notifications.*` permissions; management templates get
+`reports.export`. Everyone signed in has their own notifications and search; what each shows is
+limited by their other permissions. Notifications go to the holders of the permission that acts on
+the event (e.g. `purchasing.approve` for a submitted order) or to the people assigned, never to the
+person who did it.

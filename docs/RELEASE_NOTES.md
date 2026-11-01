@@ -1,5 +1,32 @@
 # Release notes
 
+## 0.6.0 · Phase 7: notifications and reporting · 2026-11-01
+
+New
+- Notifications in the app: approval requests and decisions, late supplier deliveries and assembly
+  orders, items below minimum, maintenance visits coming up or overdue, contracts ending, service
+  request status, warranty decisions and missing registration information. Each goes to the people
+  whose role or assignment covers it, never the person who did it. A bell with the unread count;
+  each person chooses which kinds they hear about and whether to get them by email too.
+- Reminders repeat while something stays late; escalation to a chosen role after a number of days
+  (Rules & numbering).
+- Messages (Administration): email, SMS and WhatsApp channels, each off, mock, sandbox or production;
+  credentials stored encrypted with a connection test; the wording of every message, checked and
+  previewed; a log of sent messages with masked recipients and "send again"; opt-outs. Nothing
+  leaves the server until the server setting allows it.
+- Customers can ask for updates on the public forms; staff record the same consent.
+- Reports: dashboards by area (procurement, inventory, assembly, sales, installation, warranty,
+  maintenance and service, traceability) and an exceptions view; every figure opens the rows it
+  counts. 18 reports with filters by date, product, serial, customer, distributor, supplier,
+  warehouse, project and status; CSV and Excel downloads with their own permission, audited.
+- Search across batteries, customers and suppliers, projects and documents, limited to what each
+  person may see.
+
+Upgrade
+- `uv sync` (adds openpyxl), `python -m app.setup_db` once (writes `SECRETS_KEY`; back it up with
+  `.env`), then `uv run alembic upgrade head` (migration 0009). Leave `EXTERNAL_SENDS` unset (off)
+  until a provider is approved.
+
 ## 0.5.0 · Phase 6: warranty and after-sales · 2026-10-30
 
 New
