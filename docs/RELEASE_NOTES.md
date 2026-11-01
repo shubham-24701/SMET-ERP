@@ -1,5 +1,26 @@
 # Release notes
 
+## 0.8.0 · Phase 8: security, integration and operational hardening · 2026-11-01
+
+New
+- Backups: `python -m app.backup create | verify | restore` (database and files, with checksums);
+  a monthly restore drill and incident steps in `docs/operations/RUNBOOK.md`.
+- Uploads can pass a virus scanner (MALWARE_SCAN_COMMAND, e.g. ClamAV); a refused or failed scan
+  stores nothing. Each file records whether it was scanned.
+- Files can live in an S3-compatible bucket (FILES_BACKEND=s3) instead of this computer's disk.
+- Behind a reverse proxy, the real client address is used for limits and the audit log
+  (TRUSTED_PROXIES), and only from the proxies listed.
+- Every date (deliveries, warranties, quotations, reminders, reports) is SMET's date in its time
+  zone, whatever the server's clock is set to.
+- Retention: read notifications are deleted and old message texts cleared after the days set in
+  Rules & numbering; business records and files stay.
+- System health lists file storage, the virus scanner, each message channel, the supplier API,
+  backups and the server clock.
+- Performance and concurrency check (`tests/load_check.py`) with a few years' synthetic volume.
+
+Upgrade
+- `uv run alembic upgrade head` (migration 0011). Schedule the nightly backup (runbook).
+
 ## 0.7.0 · Customization · 2026-11-01
 
 New

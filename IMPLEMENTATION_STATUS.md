@@ -36,6 +36,20 @@ Nothing here has been sandbox-tested against an external provider or production-
 | 8 | Hardening: 111-checkpoint evidence, performance and concurrency tests, backup/restore drill, deployment package, incident process | Planned |
 | 9 | End-to-end verification, release readiness, activation checklist | Planned |
 
+## Phase 8: what was built
+
+| Area | What works | Evidence |
+| --- | --- | --- |
+| 111 checkpoints | Every checkpoint re-assessed with Phase 8 evidence; hosting-dependent ones stay Pending | `docs/engineering/ENGINEERING_CHECKLIST_111.md`, `docs/security/SECURITY_CHECKLIST_111.md` |
+| Backup and restore | Dump and files zip with checksums; verify; restore (database replaced, files unzipped safely); tested end to end | `test_phase8.py::test_a_backup_restores_the_data_and_the_files` |
+| Files | Virus-scan hook (fail closed), S3-compatible storage adapter, scan result recorded, Unicode-safe download names | `::test_uploads_pass_the_virus_scanner…`, `::test_files_can_live_in_an_s3_bucket` |
+| Proxy | Client address from X-Forwarded-For only through TRUSTED_PROXIES; used by limits and the audit log | `::test_the_client_address_is_believed…` |
+| Dates | Every "today" in the app is the company's date | `::test_dates_are_smet_s_dates…` |
+| Retention | Read notifications and old message texts purged daily per the rules | `::test_retention_keeps_records…` |
+| Integration health | Storage, scanner, channels, supplier API, backups, server clock on System health | `::test_system_health_reports_each_outside_dependency` |
+| Performance | 20k serials, 60k movements, 3k orders, 3k requests, 30k notifications: report pages 18–117 ms p50; dashboards 255 ms; 8 users at once p95 1.4 s in one test process; concurrent saves resolved [200, 409] | `tests/load_check.py`, TEST_RESULTS.md |
+| Runbook | Daily backup, monthly restore drill, restore after a loss, incident steps, on-call table, post-mortem template | `docs/operations/RUNBOOK.md` |
+
 ## Customization (0.7.0): what was built
 
 | Area | What works | Evidence |
