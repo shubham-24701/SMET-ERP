@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:17
+        image: postgres:16 # same major version as the runner's pg_dump (backup test)
         env:
           POSTGRES_PASSWORD: ci-only-password
         ports: ["5432:5432"]
@@ -30,11 +30,6 @@ jobs:
       - name: Create the databases and logins exactly as the README does
         run: uv run python -m app.setup_db --admin-url "host=127.0.0.1 port=5432 user=postgres password=ci-only-password dbname=postgres"
       - run: uv run alembic upgrade head
-      - name: PostgreSQL 17 client tools (pg_dump must not be older than the server) for the backup test
-        run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q postgresql-client-17
-          echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
       - run: uv run pytest -q --junitxml=junit.xml
       - name: Name the failing tests (logs can't be read outside GitHub)
         if: failure()
