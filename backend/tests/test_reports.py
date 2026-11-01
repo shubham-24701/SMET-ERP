@@ -2,7 +2,6 @@
 can open, every report runs with every filter it offers, and downloads are permitted and audited."""
 
 import io
-from datetime import date
 
 from openpyxl import load_workbook
 from sqlalchemy import select
@@ -11,12 +10,12 @@ from app.db import SessionLocal
 from app.models import AuditEvent
 from app.reports import AREAS, REPORTS
 from tests import test_installation
-from tests.conftest import API
+from tests.conftest import API, smet_today
 from tests.ops import approved_po, item, ok, supplier
 
 site = test_installation.site  # serials B1–B6 delivered to Tower A; pm and boss hold everything
 ZERO = "00000000-0000-0000-0000-000000000000"
-VALUE = {"date_from": "2020-01-01", "date_to": str(date.today()), "serial": "B1", "item": ZERO, "customer": ZERO,
+VALUE = {"date_from": "2020-01-01", "date_to": str(smet_today()), "serial": "B1", "item": ZERO, "customer": ZERO,
          "distributor": ZERO, "supplier": ZERO, "warehouse": ZERO, "project": ZERO}  # fmt: skip
 
 

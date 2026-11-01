@@ -9,12 +9,12 @@ from app.db import SessionLocal
 from app.models import AuditEvent, MaintenanceAlert
 from app.warranty import expiry_for
 from tests import test_installation
-from tests.conftest import API, new_client
+from tests.conftest import API, new_client, smet_today
 from tests.ops import key, ok, stock_in, supplier
 from tests.test_installation import JPEG, PDF, TODAY, bank, photo, visit
 
 site = test_installation.site  # B1–B6 delivered to Tower A; pm (everything), boss, tech, other
-T = date.today()
+T = smet_today()
 
 
 def policy(x, **kw):

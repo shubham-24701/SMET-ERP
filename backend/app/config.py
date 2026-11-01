@@ -45,6 +45,22 @@ class Settings(BaseSettings):
     # only) or production. Changed only here, by whoever runs the server, never from the screen.
     external_sends: Literal["off", "sandbox", "production"] = "off"
 
+    # Phase 8. Where file bytes go: this computer (local) or an S3-compatible bucket (s3, needs boto3).
+    files_backend: Literal["local", "s3"] = "local"
+    s3_endpoint_url: str = ""  # empty = AWS; or e.g. https://<account>.r2.cloudflarestorage.com
+    s3_bucket: str = ""
+    s3_region: str = ""
+    s3_access_key_id: str = ""
+    s3_secret_access_key: str = ""
+    # A virus scanner reading the file on stdin, exit 0 clean / 1 infected, e.g.
+    # "clamdscan --no-summary --fdpass -". Empty = no scan (recorded as "not scanned").
+    malware_scan_command: str = ""
+    # Reverse proxies in front of the API (addresses): only their X-Forwarded-For is believed, so rate
+    # limits and the audit log see the real client address. Empty = nobody's.
+    trusted_proxies: list[str] = []
+    # Where `python -m app.backup create` writes; System health warns when the newest is old.
+    backup_dir: str = str(BACKEND_DIR / "backups")
+
     @property
     def owner_url(self) -> str:
         return self.migration_database_url or self.database_url

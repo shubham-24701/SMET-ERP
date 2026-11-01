@@ -4,6 +4,9 @@ import secrets
 import time
 import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime
+from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
@@ -40,7 +43,7 @@ from app.auth import CSRF_COOKIE, DB, require
 from app.auth import router as auth_router
 from app.config import BACKEND_DIR, VERSION, get_settings
 from app.db import SessionLocal
-from app.logs import setup_logging
+from app.logs import redact, setup_logging
 from app.models import Company
 from app.rbac import sync_templates
 
@@ -136,12 +139,23 @@ async def csrf_guard(request: Request, call_next):
     return await call_next(request)
 
 
+def client_ip(request: Request) -> str:
+    """The caller's address. Behind a trusted reverse proxy, the last address the proxy saw
+    (X-Forwarded-For), so a client can't pick its own address by sending the header itself."""
+    peer = request.client.host if request.client else ""
+    trusted = settings.trusted_proxies
+    if peer not in trusted:
+        return peer
+    hops = [h.strip() for h in request.headers.get("x-forwarded-for", "").split(",") if h.strip()]
+    while hops and hops[-1] in trusted:  # skip our own proxies, right to left
+        hops.pop()
+    return hops[-1] if hops else peer
+
+
 @app.middleware("http")
 async def request_context(request: Request, call_next):
     request_id = uuid.uuid4().hex[:12]
-    request_info.set(
-        {"ip": request.client.host if request.client else "", "request_id": request_id}
-    )
+    request_info.set({"ip": client_ip(request), "request_id": request_id})
     start = time.perf_counter()
     try:
         response = await call_next(request)
@@ -221,7 +235,69 @@ def system_status(_: require("system.view"), db: DB) -> dict:
         "database_version": db.scalar(text("SHOW server_version")),
         "jobs": jobs.summary(db),
         "worker_in_api": settings.run_worker_in_api,
+        "integrations": integrations(db),
     }
+
+
+def integrations(db) -> list[dict]:
+    """What each outside dependency is doing: ok, off, warning (works, needs attention) or error."""
+    from app.files import storage  # noqa: PLC0415
+    from app.masters import company_tz  # noqa: PLC0415
+    from app.messaging import EXTERNAL, blocked_reason  # noqa: PLC0415
+    from app.models import MessageProvider  # noqa: PLC0415
+
+    out = []
+    try:
+        s = storage()
+        out.append({"name": f"File storage ({s.name})", "state": "ok", "detail": s.check()})
+    except Exception as e:  # report, don't fail the page
+        out.append({"name": "File storage", "state": "error", "detail": redact(str(e))[:200]})
+    out.append({"name": "Virus scanner", "state": "ok" if settings.malware_scan_command else "off",
+                "detail": "Every upload is scanned; refused or failed scans stop the upload" if settings.malware_scan_command
+                else "Not set (MALWARE_SCAN_COMMAND): uploads are type-checked only"})  # fmt: skip
+    for ch in EXTERNAL:
+        p = db.get(MessageProvider, ch)
+        if p is None or p.mode == "off":
+            out.append({"name": f"Messages: {ch}", "state": "off", "detail": "Switched off"})
+            continue
+        why = blocked_reason(p)
+        test = (
+            ""
+            if p.last_test_at is None
+            else f"; last test {'passed' if p.last_test_ok else 'failed'}: {p.last_test_message}"
+        )
+        out.append({"name": f"Messages: {ch}", "state": "warning" if why or p.last_test_ok is False else "ok",
+                    "detail": f"{p.provider}, {p.mode}" + (f"; {why}" if why else "") + test})  # fmt: skip
+    out.append(
+        {
+            "name": "Battery supplier API",
+            "state": "off",
+            "detail": "Manual: reset codes are typed in (no supplier API documented)",
+        }
+    )
+    dumps = (
+        sorted(Path(settings.backup_dir).glob("smet-*.dump"))
+        if Path(settings.backup_dir).exists()
+        else []
+    )
+    if not dumps:
+        out.append(
+            {
+                "name": "Backups",
+                "state": "warning",
+                "detail": f"None found in {settings.backup_dir}",
+            }
+        )
+    else:
+        age = (time.time() - dumps[-1].stat().st_mtime) / 86400
+        out.append({"name": "Backups", "state": "ok" if age < 1.5 else "warning",
+                    "detail": f"Newest {dumps[-1].name}, {age:.1f} days old"})  # fmt: skip
+    server = time.strftime("%Z")
+    company = company_tz(db)
+    same = datetime.now().astimezone().utcoffset() == datetime.now(ZoneInfo(company)).utcoffset()
+    out.append({"name": "Server clock", "state": "ok" if same else "warning",
+                "detail": f"Server time zone {server}" + ("" if same else f"; set it to {company} (dates follow the server's clock)")})  # fmt: skip
+    return out
 
 
 app.include_router(api)

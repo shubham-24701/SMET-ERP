@@ -38,7 +38,16 @@ from app.inventory import (
     warehouse_location,
     whole,
 )
-from app.masters import Limit, NumbersRoute, Offset, get_or_404, item_ref, next_number, page
+from app.masters import (
+    Limit,
+    NumbersRoute,
+    Offset,
+    company_today,
+    get_or_404,
+    item_ref,
+    next_number,
+    page,
+)
 from app.models import (
     Dispatch,
     DispatchLine,
@@ -423,7 +432,7 @@ def deliver(
     if (prev := claim_key(db, body.key, "dispatch_deliver")) is not None:
         return prev
     d = _dispatch(db, dispatch_id, body.version, "dispatched")
-    if body.delivered_on > date.today():
+    if body.delivered_on > company_today(db):
         raise field_error("delivered_on", "Delivery can't be dated in the future")
     so = get_or_404(db, SalesOrder, d.order_id, "Sales order", lock=True)
     lines = {

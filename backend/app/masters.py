@@ -133,7 +133,7 @@ def next_number(db: Session, doc_type: str) -> str:
     seq = db.scalar(
         select(NumberSequence).where(NumberSequence.doc_type == doc_type).with_for_update()
     )
-    year = date.today().year
+    year = company_today(db).year
     if seq.yearly and seq.year != year:
         seq.year, seq.next_value = year, 1
     n = seq.next_value
@@ -176,6 +176,10 @@ RULE_DEFAULTS: dict = {
     "escalate_after_days": None,
     "escalation_role_id": None,
     "phone_country_code": "971",  # for numbers written locally, e.g. 050 123 4567
+    # Phase 8 retention: read notifications are deleted, and sent messages lose their text and full
+    # recipient (status and masked address stay), this many days on. Business records and files stay.
+    "notification_retention_days": 180,
+    "message_retention_days": 365,
     # Workflow settings: switching an approval off approves on submission (recorded as automatic).
     "po_approval_required": True,
     "quote_approval_required": True,
@@ -280,6 +284,8 @@ class RulesPatch(BaseModel):
     escalate_after_days: int | None = Field(default=None, ge=1, le=365)
     escalation_role_id: uuid.UUID | None = None
     phone_country_code: str | None = Field(default=None, pattern=r"^[1-9]\d{0,3}$")
+    notification_retention_days: int | None = Field(default=None, ge=30, le=3650)
+    message_retention_days: int | None = Field(default=None, ge=30, le=3650)
     po_approval_required: bool | None = None
     quote_approval_required: bool | None = None
     event_roles: dict[str, list[uuid.UUID]] | None = None
@@ -342,7 +348,7 @@ def _seq_row(db: Session, doc_type: str) -> dict:
     prefix, padding, yearly = (
         (s.prefix, s.padding, s.yearly) if s else (SEQUENCES[doc_type], 5, True)
     )
-    year = date.today().year
+    year = company_today(db).year
     n = s.next_value if s and (not yearly or s.year == year) else 1
     return {"doc_type": doc_type, "prefix": prefix, "padding": padding, "yearly": yearly,
             "next": f"{prefix}{f'-{year}' if yearly else ''}-{n:0{padding}d}"}  # fmt: skip

@@ -21,7 +21,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.audit import record
+from app.audit import record, request_info
 from app.config import get_settings
 from app.db import get_db
 from app.models import AuthSession, Company, Role, RolePermission, User, UserRole, utcnow
@@ -254,7 +254,7 @@ def setup(body: SetupIn, response: Response, db: DB) -> dict:
 @router.post("/login")
 def login(body: LoginIn, request: Request, response: Response, db: DB) -> dict:
     email = body.email.strip().lower()
-    client = request.client.host if request.client else "?"
+    client = request_info.get().get("ip") or "?"  # the real address, also behind a trusted proxy
     message = "Too many sign-in attempts. Try again in a minute."
     rate_limit(f"login|{client}", CLIENT_LOGIN_LIMIT, LOGIN_WINDOW_S, message)
     # Per account too, whatever the address: one address can't guess one password many times.

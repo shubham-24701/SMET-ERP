@@ -1,20 +1,20 @@
 """Regressions for the independent review of Phase 6 (2026-10-30). Each test failed before its fix."""
 
 import io
-from datetime import date, timedelta
+from datetime import timedelta
 
 from sqlalchemy import update
 
 from app.db import SessionLocal
 from app.models import AmcContract, Serial, WarrantyRegistration
 from tests import test_installation
-from tests.conftest import API, new_client
+from tests.conftest import API, new_client, smet_today
 from tests.ops import key, ok, stock_in, supplier
 from tests.test_aftersales import handed_over, policy, regs
 from tests.test_installation import TODAY
 
 site = test_installation.site
-T = date.today()
+T = smet_today()
 
 
 def replace_on_request(x, old, new, bank, stock=True):

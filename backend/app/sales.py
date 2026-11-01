@@ -15,14 +15,24 @@ from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from app.admin import field_error, stale
 from app.assembly import OrderIn, plan_order
 from app.audit import record
 from app.auth import DB, Principal, require
 from app.inventory import Key, claim_key, conflict, free, lock_items, release_for, remember, reserve
-from app.masters import Limit, NumbersRoute, Offset, get_or_404, item_ref, next_number, page, rules
+from app.masters import (
+    Limit,
+    NumbersRoute,
+    Offset,
+    company_today,
+    get_or_404,
+    item_ref,
+    next_number,
+    page,
+    rules,
+)
 from app.models import (
     Company,
     Dispatch,
@@ -247,7 +257,11 @@ def _lines(db: Session, rev_id) -> list[QuotationLine]:
 
 def effective(r: QuotationRevision) -> str:
     """Approved or submitted revisions past their validity date read as expired."""
-    if r.status in ("submitted", "approved") and r.valid_until and r.valid_until < date.today():
+    if (
+        r.status in ("submitted", "approved")
+        and r.valid_until
+        and r.valid_until < company_today(object_session(r))
+    ):
         return "expired"
     return r.status
 
@@ -345,7 +359,7 @@ def _fill(r: QuotationRevision, body: RevisionIn, db: Session) -> None:
     ):
         setattr(r, k, getattr(body, k))
     if r.valid_until is None:
-        r.valid_until = date.today() + timedelta(days=int(rules(db)["quote_valid_days"]))
+        r.valid_until = company_today(db) + timedelta(days=int(rules(db)["quote_valid_days"]))
 
 
 def create_quotation(db: Session, user: User, body: QuotationIn) -> Quotation:
@@ -471,7 +485,7 @@ def submit_quotation(
     quotation_id: uuid.UUID, body: Decision, p: require("sales.create"), db: DB
 ) -> dict:
     qt, r = _current(db, quotation_id, body.version, ("draft",))
-    if r.valid_until and r.valid_until < date.today():
+    if r.valid_until and r.valid_until < company_today(db):
         raise field_error("valid_until", "The validity date has passed: change it first")
     row = revision_row(db, r)
     if row["total"] <= 0 and not any(ln["unit_price"] for ln in row["lines"]):
@@ -570,7 +584,7 @@ def revise_quotation(
                             valid_until=None, terms=r.terms, scope_notes=r.scope_notes,
                             installation_date=r.installation_date, commissioning_date=r.commissioning_date,
                             handover_date=r.handover_date)  # fmt: skip
-    new.valid_until = date.today() + timedelta(days=int(rules(db)["quote_valid_days"]))
+    new.valid_until = company_today(db) + timedelta(days=int(rules(db)["quote_valid_days"]))
     db.add(new)
     db.flush()
     db.add_all(QuotationLine(revision_id=new.id, line_type=ln.line_type, item_id=ln.item_id, description=ln.description,
@@ -596,7 +610,7 @@ def record_answer(
 ) -> dict:
     """The customer's acceptance or refusal of the approved revision, as SMET received it."""
     qt, r = _current(db, quotation_id, body.version, ("approved",))
-    if body.on > date.today():
+    if body.on > company_today(db):
         raise field_error("on", "The answer can't be dated in the future")
     r.status = "accepted" if body.accepted else "declined"
     r.customer_answer_by, r.customer_ref, r.customer_answer_at = body.by, body.ref, body.on

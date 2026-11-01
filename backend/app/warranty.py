@@ -25,7 +25,16 @@ from app.audit import record
 from app.auth import DB, Principal, require
 from app.files import store
 from app.inventory import NeededReason, conflict
-from app.masters import Limit, NumbersRoute, Offset, get_or_404, item_ref, next_number, rules
+from app.masters import (
+    Limit,
+    NumbersRoute,
+    Offset,
+    company_today,
+    get_or_404,
+    item_ref,
+    next_number,
+    rules,
+)
 from app.models import (
     AuditEvent,
     BankPosition,
@@ -112,7 +121,7 @@ def evaluate(
     start = getattr(r, EVENTS[pol.start_event])
     if start is None:
         problems.append(f"The {pol.start_event} date (the warranty starts then)")
-    elif start > date.today():
+    elif start > company_today(db):
         problems.append(f"The {pol.start_event} date is in the future")
     if pol.requires_proof and r.route not in NO_PROOF_ROUTES:
         has = db.scalar(select(StoredFile.id).where(StoredFile.owner_type == "warranty", StoredFile.owner_id == r.id,
@@ -278,7 +287,9 @@ def update_policy(
 def reg_row(db: Session, r: WarrantyRegistration, full: bool = False) -> dict:
     s = db.get(Serial, r.serial_id)
     item = db.get(Item, s.item_id)
-    expired = r.status == "approved" and r.expiry_date is not None and r.expiry_date < date.today()
+    expired = (
+        r.status == "approved" and r.expiry_date is not None and r.expiry_date < company_today(db)
+    )
     row = {"id": r.id, "number": r.number, "serial": {"id": s.id, "serial": s.serial}, "item": item_ref(item),
            "route": r.route, "status": r.status, "expired": expired, "customer_name": r.customer_name,
            "start_date": r.start_date, "expiry_date": r.expiry_date, "created_at": r.created_at, "version": r.version}  # fmt: skip
@@ -601,7 +612,7 @@ def correct(reg_id: uuid.UUID, body: CorrectIn, p: require("warranty.correct"), 
         db.commit()
         return reg_row(db, r, full=True)
     start = getattr(r, EVENTS[pol.start_event])
-    if start is None or start > date.today():
+    if start is None or start > company_today(db):
         raise field_error(
             EVENTS[pol.start_event], f"The {pol.start_event} date starts this warranty"
         )
@@ -732,7 +743,7 @@ def warranty_of(db: Session, serial_id) -> dict:
                   .order_by(WarrantyRegistration.created_at.desc()).limit(1))  # fmt: skip
     if r is None:
         return {"state": "none"}
-    today = date.today()
+    today = company_today(db)
     state = {"pending": "pending", "correction_required": "pending", "ended": "ended"}.get(r.status)
     if r.status == "approved":
         state = (

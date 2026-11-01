@@ -31,6 +31,16 @@ from app.main import app  # noqa: E402
 from app.models import Role, RolePermission, User, UserRole  # noqa: E402
 
 API = "/api/v1"
+
+
+def smet_today():
+    """Today in the company's time zone (Asia/Dubai), as the app dates things."""
+    from datetime import datetime  # noqa: PLC0415
+    from zoneinfo import ZoneInfo  # noqa: PLC0415
+
+    return datetime.now(ZoneInfo("Asia/Dubai")).date()
+
+
 PASSWORD = "correct-horse-battery"
 ADMIN = {"company_name": "Demo Trading LLC", "name": "Test Admin", "email": "admin@example.test",
          "password": PASSWORD}  # fmt: skip

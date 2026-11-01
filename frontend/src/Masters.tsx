@@ -435,7 +435,8 @@ type Rules = { po_approval_required: boolean; quote_approval_required: boolean; 
   install_photos_min: number; commission_photos_min: number; handover_photos_min: number; handover_with_open_issues: boolean
   maintenance_photos_min: number; service_photos_min: number; warranty_self_approval: boolean; public_warranty_dates: boolean
   amc_renewal_notice_days: number; code_retention_days: number; amc_visit_notice_days: number; reminder_repeat_days: number
-  escalate_after_days: number | null; escalation_role_id: string | null; phone_country_code: string }
+  escalate_after_days: number | null; escalation_role_id: string | null; phone_country_code: string
+  notification_retention_days: number; message_retention_days: number }
 type Seq = { doc_type: string; prefix: string; padding: number; yearly: boolean; next: string }
 const DOCS: Record<string, string> = {
   purchase_request: 'Purchase requests', supplier_quote: 'Supplier quotations', purchase_order: 'Purchase orders',
@@ -531,7 +532,7 @@ export function RulesPage() {
         setFields({})
         void action.run('reminders', () => api('/rules', { method: 'PATCH', body: { version: rules.data!.version, amc_visit_notice_days: n('visit'),
           reminder_repeat_days: n('repeat'), escalate_after_days: n('escalate'), escalation_role_id: fd.get('role') || null,
-          phone_country_code: fd.get('cc'), reason: fd.get('reason') } })
+          phone_country_code: fd.get('cc'), notification_retention_days: n('nret'), message_retention_days: n('mret'), reason: fd.get('reason') } })
           .catch((err) => { setFields(fieldsOf(err)); throw err }))
       }}>
         <div><h2>Reminders</h2><p className="muted">When people are told about visits coming up, how often a reminder about something late repeats, and who hears once it is very late (assumption A31).</p></div>
@@ -543,6 +544,8 @@ export function RulesPage() {
             <SelectField key={roles.data ? 'roles' : 'loading'} label="Escalate to" name="role" defaultValue={r.escalation_role_id ?? ''} error={fields.escalation_role_id}
               options={[['', 'Nobody'], ...(roles.data ? roles.data.items.map((x) => [x.id, x.name] as [string, string])
                 : r.escalation_role_id ? [[r.escalation_role_id, 'The role set now'] as [string, string]] : [])]} />
+            <Field label="Delete read notifications after (days)" name="nret" type="number" min={30} max={3650} defaultValue={r.notification_retention_days} error={fields.notification_retention_days} />
+            <Field label="Clear the text of sent messages after (days)" name="mret" type="number" min={30} max={3650} defaultValue={r.message_retention_days} error={fields.message_retention_days} hint="The status and masked address stay." />
             <Field label="Country code for local phone numbers" name="cc" defaultValue={r.phone_country_code} error={fields.phone_country_code} hint="971 for the UAE: 050 123 4567 becomes +971 50 123 4567." />
           </div>
           <TextareaField label="Reason for the change" name="reason" maxLength={500} />

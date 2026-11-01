@@ -1,12 +1,10 @@
 """Regressions for the independent review of Phase 4 (2026-10-30). Each test failed before its fix."""
 
-from datetime import date
-
 import pytest
 
 from app.projects import evaluate
 from tests import test_projects, test_sales
-from tests.conftest import API
+from tests.conftest import API, smet_today
 from tests.ops import ALL, key, ok, reconciled, summary
 from tests.test_sales import quote, to_order
 
@@ -74,7 +72,7 @@ def test_a_project_reservation_is_shared_once_across_its_orders(proj, admin):  #
         qt = ok(
             pm.post(
                 f"{API}/quotations/{qt['id']}/answer",
-                json={"version": v(qt), "accepted": True, "by": "Buyer", "on": str(date.today())},
+                json={"version": v(qt), "accepted": True, "by": "Buyer", "on": str(smet_today())},
             )
         )
         orders.append(
@@ -207,5 +205,5 @@ def test_refused_serials_are_named_not_counted(shop):  # L14
     ok(a.post(f"{API}/dispatches/{d['id']}/send", json={"version": d["version"], "key": key()}))
     d = ok(a.get(f"{API}/dispatches/{d['id']}"))
     r = a.post(f"{API}/dispatches/{d['id']}/deliver", json={"version": d["version"], "key": key(), "received_by": "X",
-               "delivered_on": str(date.today()), "lines": [{"line_id": d["lines"][0]["id"], "qty_rejected": 1}]})  # fmt: skip
+               "delivered_on": str(smet_today()), "lines": [{"line_id": d["lines"][0]["id"], "qty_rejected": 1}]})  # fmt: skip
     assert r.status_code == 422 and "name the refused serial" in r.text

@@ -24,7 +24,16 @@ from app.auth import DB, require
 from app.config import get_settings
 from app.inventory import NeededReason, conflict
 from app.jobs import periodic
-from app.masters import Limit, NumbersRoute, Offset, get_or_404, item_ref, next_number, rules
+from app.masters import (
+    Limit,
+    NumbersRoute,
+    Offset,
+    company_today,
+    get_or_404,
+    item_ref,
+    next_number,
+    rules,
+)
 from app.models import (
     Item,
     MaintenanceAlert,
@@ -243,7 +252,7 @@ def record_code(alert_id: uuid.UUID, body: CodeIn, p: require("codes.reveal"), d
     )
     if not done:
         raise conflict("Complete the inspection or maintenance visit on the service request first")
-    if body.issued_on > date.today():
+    if body.issued_on > company_today(db):
         raise field_error("issued_on", "Not in the future")
     if body.expires_on and body.expires_on < body.issued_on:
         raise field_error("expires_on", "Expires after it is issued")

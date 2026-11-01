@@ -21,7 +21,16 @@ from app.admin import field_error, stale
 from app.audit import record
 from app.auth import DB, Principal, require
 from app.inventory import NeededReason, conflict
-from app.masters import Limit, NumbersRoute, Offset, get_or_404, item_ref, next_number, rules
+from app.masters import (
+    Limit,
+    NumbersRoute,
+    Offset,
+    company_today,
+    get_or_404,
+    item_ref,
+    next_number,
+    rules,
+)
 from app.models import (
     BankPosition,
     BatteryBank,
@@ -917,7 +926,7 @@ def _missing(db: Session, v: SiteVisit) -> list[str]:
 def complete_visit(visit_id: uuid.UUID, body: CompleteIn, p: Worker, db: DB) -> dict:
     v = _open_visit(db, visit_id, body.version)
     check_may_work(p, v)
-    if body.done_on > date.today():
+    if body.done_on > company_today(db):
         raise field_error("done_on", "The work can't be done in the future")
     if missing := _missing(db, v):
         raise HTTPException(
@@ -1021,7 +1030,7 @@ def close_issue(visit_id: uuid.UUID, index: int, body: CloseIssueIn, p: Worker, 
     if not 0 <= index < len(v.issues) or v.issues[index]["status"] != "open":
         raise conflict("That issue is not open")
     issues = [dict(i) for i in v.issues]
-    issues[index] |= {"status": "closed", "action": body.action, "closed_on": date.today().isoformat(),
+    issues[index] |= {"status": "closed", "action": body.action, "closed_on": company_today(db).isoformat(),
                       "closed_by": p.user.name}  # fmt: skip
     v.issues, v.version = issues, v.version + 1
     record(

@@ -2,14 +2,14 @@
 sales order → reservations → dispatch of exact serials → delivery with discrepancies → cancellation."""
 
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import update
 
 from app.db import SessionLocal
 from app.models import QuotationRevision
-from tests.conftest import API
+from tests.conftest import API, smet_today
 from tests.ops import ALL, item, key, ok, reconciled, stock_in, summary, supplier, warehouse
 
 
@@ -49,7 +49,7 @@ def to_order(s, qt=None):
     qt = ok(a.post(f"{API}/quotations/{qt['id']}/submit", json={"version": v(qt)}))
     qt = ok(b.post(f"{API}/quotations/{qt['id']}/approve", json={"version": v(qt)}))
     qt = ok(a.post(f"{API}/quotations/{qt['id']}/answer", json={"version": v(qt), "accepted": True, "by": "Dr Noor",
-                                                                 "ref": "LPO-88", "on": str(date.today())}))  # fmt: skip
+                                                                 "ref": "LPO-88", "on": str(smet_today())}))  # fmt: skip
     return qt, ok(a.post(f"{API}/quotations/{qt['id']}/convert", json={"version": v(qt)}), 201)
 
 
@@ -139,7 +139,7 @@ def test_revisions_are_kept_and_conversion_happens_once(shop, user_with):
         )
     )
     qt2 = ok(a.post(f"{API}/quotations/{qt2['id']}/answer", json={"version": qt2["revisions"][0]["version"], "accepted": True,
-                                                                   "by": "Buyer", "on": str(date.today())}))  # fmt: skip
+                                                                   "by": "Buyer", "on": str(smet_today())}))  # fmt: skip
     people = [user_with(perms=ALL) for _ in range(3)]
     with ThreadPoolExecutor(3) as pool:
         codes = sorted(pool.map(lambda c: c.post(f"{API}/quotations/{qt2['id']}/convert",
@@ -162,12 +162,12 @@ def test_expired_quotations_cannot_be_accepted(shop):
     )
     with SessionLocal() as db:
         db.execute(update(QuotationRevision).where(QuotationRevision.id == qt["revisions"][0]["id"])
-                   .values(valid_until=date.today() - timedelta(days=1)))  # fmt: skip
+                   .values(valid_until=smet_today() - timedelta(days=1)))  # fmt: skip
         db.commit()
     qt = ok(a.get(f"{API}/quotations/{qt['id']}"))
     assert qt["status"] == "expired"
     r = a.post(f"{API}/quotations/{qt['id']}/answer", json={"version": qt["revisions"][0]["version"], "accepted": True,
-                                                            "by": "Late buyer", "on": str(date.today())})  # fmt: skip
+                                                            "by": "Late buyer", "on": str(smet_today())})  # fmt: skip
     assert r.status_code == 409 and "expired" in r.text
     ok(
         a.post(
@@ -270,7 +270,7 @@ def test_dispatch_takes_reserved_available_serials_and_delivery_records_refusals
     d = ok(a.get(f"{API}/dispatches/{d['id']}"))
     lines = {ln["item"]["code"]: ln for ln in d["lines"]}
     ok(a.post(f"{API}/dispatches/{d['id']}/deliver", json={"version": d["version"], "key": key(), "received_by": "Store keeper Ali",
-              "delivered_on": str(date.today()), "lines": [{"line_id": lines["UNIT-12V"]["id"], "rejected_serials": ["U2"], "note": "Dented case"},
+              "delivered_on": str(smet_today()), "lines": [{"line_id": lines["UNIT-12V"]["id"], "rejected_serials": ["U2"], "note": "Dented case"},
                                                            {"line_id": lines["LUG"]["id"], "qty_damaged": 1}]}))  # fmt: skip
     so = ok(a.get(f"{API}/sales-orders/{so['id']}"))
     ul = next(ln for ln in so["lines"] if ln["line_type"] == "battery")

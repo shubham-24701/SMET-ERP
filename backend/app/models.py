@@ -1210,6 +1210,7 @@ class StoredFile(Base):
     size: Mapped[int] = mapped_column(Integer)
     sha256: Mapped[str] = mapped_column(String(64))
     caption: Mapped[str] = mapped_column(String(300), server_default="")
+    scan: Mapped[str] = mapped_column(String(12), server_default="not scanned")  # clean|not scanned
     uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id")
     )  # None: public form
