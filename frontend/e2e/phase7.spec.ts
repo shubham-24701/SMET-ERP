@@ -84,6 +84,10 @@ test('notifications, mock messages, reports with filters and export, and search'
   await stranger.getByLabel(/Send me updates/).check()
   await stranger.getByRole('button', { name: 'Send request' }).click()
   await expect(stranger.getByText(/SMET has received it/)).toBeVisible()
+  // Maya takes it up; the stranger, who asked for updates, gets a text (mock: recorded only).
+  const srs = await api(page, 'GET', '/service-requests?q=Site%20office')
+  const sr = srs.items.find((x: { issue: string }) => x.issue.includes(s)) ?? srs.items[0]
+  await api(page, 'POST', `/service-requests/${sr.id}/status`, { version: sr.version, to: 'under_review' })
 
   // Maya reads the dashboards; a figure opens the rows it counts; she filters and downloads.
   await go(page, 'Reports')

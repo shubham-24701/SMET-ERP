@@ -38,6 +38,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, StringConstraints
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.admin import field_error, stale
@@ -58,7 +59,7 @@ from app.models import (
 
 router = APIRouter(tags=["messages"])
 log = logging.getLogger("smet.messages")
-CHANNELS = ("in_app", "email", "sms", "whatsapp")
+CHANNELS = ("in_app", "email", "customer_email", "sms", "whatsapp")
 EXTERNAL = ("email", "sms", "whatsapp")
 MAX_ATTEMPTS = 5
 
@@ -114,12 +115,12 @@ _CUSTOMER: dict[str, str] = {
 def default_template(event: str, channel: str) -> tuple[str, str] | None:
     if channel == "in_app":
         return _IN_APP[event]
-    if channel == "email":
+    if channel == "email":  # staff copy, with a link to the record
         subject, body = _IN_APP[event]
-        if EVENTS[event].customer:  # email may reach a customer too: customer wording, no link
-            return subject, _CUSTOMER[event]
         return subject, body + "\n\nOpen in SMET: {url}"
-    return ("", _CUSTOMER[event]) if event in _CUSTOMER else None
+    if channel == "customer_email" and event in _CUSTOMER:  # customer wording, no link
+        return _IN_APP[event][0], _CUSTOMER[event]
+    return ("", _CUSTOMER[event]) if channel in ("sms", "whatsapp") and event in _CUSTOMER else None
 
 
 VAR = re.compile(r"\{(\w+)\}")
@@ -195,7 +196,12 @@ def mask(address: str) -> str:
 
 
 class Retry(Exception):
-    """A temporary failure: worth trying again later."""
+    """A temporary failure before the message got through: worth trying again later."""
+
+
+class Unsure(Exception):
+    """The provider may have the message (a timeout after sending, an unreadable answer): it is
+    never sent again by itself, so it can't arrive twice."""
 
 
 @dataclass
@@ -219,17 +225,33 @@ def http(method: str, url: str, *, headers: dict | None = None, form: dict | Non
         data, h["Content-Type"] = urlencode(form).encode(), "application/x-www-form-urlencoded"
     try:
         with urlopen(Request(url, data, h, method=method), timeout=timeout) as r:  # noqa: S310 - https only
-            return r.status, json.loads(r.read() or b"{}")
+            raw = r.read()
     except HTTPError as e:
         try:
             return e.code, json.loads(e.read() or b"{}")
         except ValueError:
             return e.code, {}
-    except (URLError, TimeoutError, OSError) as e:
-        raise Retry(f"Couldn't reach the provider ({getattr(e, 'reason', e)})") from e
+    except URLError as e:  # no connection: the request never got through
+        raise Retry(f"Couldn't reach the provider ({e.reason})") from e
+    except (TimeoutError, OSError) as e:  # sent, but no answer: it may have arrived
+        raise Unsure(f"No answer from the provider after sending ({e})") from e
+    try:
+        return r.status, json.loads(raw or b"{}")
+    except ValueError as e:
+        raise Unsure("The provider accepted the request but its answer couldn't be read") from e
 
 
 HTTP = http  # tests replace this; nothing in tests reaches a network
+
+
+def _ref(payload: dict, *path) -> str:
+    """The provider's id for an accepted message; a 2xx without one is unsure, not failed."""
+    try:
+        for k in path:
+            payload = payload[k]
+        return str(payload)
+    except (KeyError, IndexError, TypeError) as e:
+        raise Unsure("The provider accepted the message but sent no reference") from e
 
 
 def _answer(code: int, payload: dict, what: str) -> dict:
@@ -290,8 +312,10 @@ class Smtp:
             c.send_message(msg)
         except smtplib.SMTPRecipientsRefused as e:
             raise ValueError("The server refused the recipient address") from e
-        except (smtplib.SMTPException, OSError) as e:
-            raise Retry(f"The mail server dropped the message ({e})") from e
+        except smtplib.SMTPResponseException as e:  # a clear refusal with a reply code
+            raise ValueError(f"The mail server refused the message ({e.smtp_code})") from e
+        except (smtplib.SMTPException, OSError) as e:  # cut off mid-way: it may have been accepted
+            raise Unsure(f"The mail server dropped the connection while sending ({e})") from e
         finally:
             try:
                 c.quit()
@@ -329,7 +353,7 @@ class Twilio:
     def send(self, m: Outgoing) -> str:
         code, p = HTTP("POST", f"{self.base}/Messages.json", headers=self.auth,
                        form={"To": m.to, "From": self.s["from_number"], "Body": m.body})  # fmt: skip
-        return _answer(code, p, "Twilio")["sid"]
+        return _ref(_answer(code, p, "Twilio"), "sid")
 
     def test(self) -> str:
         code, p = HTTP("GET", f"{self.base}.json", headers=self.auth)
@@ -364,7 +388,7 @@ class MetaCloud:
                 "template": {"name": m.template, "language": {"code": m.language},
                              "components": [{"type": "body", "parameters": [{"type": "text", "text": v} for v in m.params]}]}}  # fmt: skip
         code, p = HTTP("POST", f"{self.url}/messages", headers=self.auth, body=body)
-        return _answer(code, p, "WhatsApp")["messages"][0]["id"]
+        return _ref(_answer(code, p, "WhatsApp"), "messages", 0, "id")
 
     def test(self) -> str:
         code, p = HTTP(
@@ -421,14 +445,16 @@ def blocked_reason(p: MessageProvider | None) -> str:
 
 def queue(db: Session, *, event: str, channel: str, to: str, key: str, values: dict,
           user_id: uuid.UUID | None = None, entity: tuple[str, str] = ("", "")) -> None:  # fmt: skip
-    """Add an external message in the caller's transaction. Same key = sent once, ever."""
+    """Add an external message in the caller's transaction. Same key = sent once, ever.
+    `user_id` None = a customer: customer wording, and texts only to numbers in SMET's country."""
     p = db.get(MessageProvider, channel)
-    w = wording(db, event, channel)
+    w = wording(db, event, "customer_email" if channel == "email" and user_id is None else channel)
     if p is None or p.mode == "off" or w is None or not w.active:
         return
-    addr = normalise(channel, to, str(rules(db)["phone_country_code"]))
-    if addr is None:
-        return
+    cc = str(rules(db)["phone_country_code"])
+    addr = normalise(channel, to, cc)
+    if addr is None or (channel != "email" and user_id is None and not addr.startswith(f"+{cc}")):
+        return  # shortcut: no texts abroad, so a public form can't run up a bill (assumption A33)
     st, err = "queued", blocked_reason(p)
     if db.get(MessageOptOut, (channel, addr)):
         st, err = "skipped", "The recipient opted out of this channel"
@@ -467,7 +493,15 @@ def send_job(db: Session, payload: dict) -> None:
         d.status, d.error, d.updated_at = "blocked", reason, utcnow()
         db.commit()
         return
-    w = wording(db, d.event, d.channel)
+    if db.get(MessageOptOut, (d.channel, d.recipient)):
+        d.status, d.error, d.updated_at = (
+            "skipped",
+            "The recipient opted out of this channel",
+            utcnow(),
+        )
+        db.commit()
+        return
+    w = wording(db, d.event, d.channel)  # the WhatsApp template name and language
     d.status, d.attempts, d.mode, d.provider = "sending", d.attempts + 1, p.mode, p.provider
     d.sent_to = p.test_recipient if p.mode == "sandbox" else d.recipient
     d.updated_at = utcnow()
@@ -482,6 +516,10 @@ def send_job(db: Session, payload: dict) -> None:
         db.commit()
         if d.status == "queued":
             raise  # the job queue tries again with a growing delay
+        return
+    except Unsure as e:
+        d.status, d.error, d.updated_at = "unknown", redact(str(e))[:300], utcnow()
+        db.commit()
         return
     except Exception as e:  # refused: trying again would get the same answer
         d.status, d.error, d.updated_at = "failed", redact(str(e))[:300], utcnow()
@@ -503,7 +541,12 @@ def refresh_status(db: Session) -> None:
                                                     MessageDelivery.created_at > utcnow() - timedelta(days=2)).limit(50)).all()  # fmt: skip
     for d in rows:
         p = db.get(MessageProvider, d.channel)
-        if p is None or p.provider != d.provider or p.mode not in ("sandbox", "production"):
+        if (
+            p is None
+            or p.provider != d.provider
+            or p.mode not in ("sandbox", "production")
+            or not server_allows(p.mode)
+        ):
             continue
         try:
             new = adapter(p).status(d.provider_ref)
@@ -596,6 +639,29 @@ def save_provider(channel: Literal["email", "sms", "whatsapp"], body: ProviderIn
         "settings": row.settings,
         "test_recipient": row.test_recipient,
     }
+    # Where the stored credential goes may only change with the credential typed again: otherwise
+    # pointing the channel at another server would hand it the stored password.
+    target = (
+        "provider",
+        "host",
+        "port",
+        "security",
+        "username",
+        "account_sid",
+        "phone_number_id",
+        "api_version",
+    )
+    moved = row.provider != body.provider or any(
+        (row.settings or {}).get(k, "") != settings.get(k, "") for k in target
+    )
+    if row.secret_ciphertext and moved and not body.secret:
+        raise field_error(
+            "secret", f"Type the {kind.secret_label.lower()} again: the server or account changed"
+        )
+    if settings.get("username") and settings.get("security") == "none":
+        raise field_error(
+            "settings.security", "Use starttls or ssl: a password is never sent unencrypted"
+        )
     if body.secret:
         row.secret_ciphertext = cipher().encrypt(body.secret.encode()).decode()
     if body.mode in ("sandbox", "production") and not row.secret_ciphertext:
@@ -614,11 +680,16 @@ def save_provider(channel: Literal["email", "sms", "whatsapp"], body: ProviderIn
         "test_recipient": row.test_recipient,
     }
     changes = {k: [before[k], after[k]] for k in after if before[k] != after[k]}
+    if "test_recipient" in changes:
+        changes["test_recipient"] = [mask(x) if x else "" for x in changes["test_recipient"]]
     if body.secret:
         changes["secret"] = ["[hidden]", "[hidden]"]
     record(db, p.user, "messages.provider", "message_provider", channel,
            f"{channel} messages: {row.provider}, {row.mode}", changes, body.reason)  # fmt: skip
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:  # someone else set this channel up a moment ago
+        raise stale() from None
     return _provider_row(channel, row)
 
 
@@ -630,10 +701,12 @@ def test_provider(channel: Literal["email", "sms", "whatsapp"], p: require("noti
         raise conflict("Switch the channel on first")
     if row.mode == "mock":
         ok, msg = True, "Mock mode: nothing is contacted, every message is recorded here only"
+    elif not server_allows(row.mode):  # the server contacts nobody, not even to test
+        raise conflict(blocked_reason(row))
     else:
         try:
             ok, msg = True, adapter(row).test()
-        except (Retry, ValueError, KeyError) as e:
+        except (Retry, Unsure, ValueError, KeyError) as e:
             ok, msg = False, redact(str(e))
     row.last_test_at, row.last_test_ok, row.last_test_message = utcnow(), ok, msg[:300]
     record(db, p.user, "messages.test", "message_provider", channel, f"{channel} connection test: {'passed' if ok else 'failed'}")  # fmt: skip
@@ -650,8 +723,8 @@ def list_templates(_: require("notifications.configure"), db: DB) -> dict:
             if w is None:
                 continue
             t = db.scalar(select(MessageTemplate).where(MessageTemplate.event == event, MessageTemplate.channel == channel))  # fmt: skip
-            out.append({"event": event, "label": ev.label, "channel": channel, "audience": "customer" if channel in ("sms", "whatsapp") or (channel == "email" and ev.customer) else "staff",
-                        "fields": [*ev.vars, "company"] + (["url"] if channel == "email" and not ev.customer else []),
+            out.append({"event": event, "label": ev.label, "channel": channel, "audience": "customer" if channel in ("sms", "whatsapp", "customer_email") else "staff",
+                        "fields": [*ev.vars, "company"] + (["url"] if channel == "email" else []),
                         "subject": w.subject, "body": w.body, "provider_template": w.provider_template, "language": w.language,
                         "active": w.active, "customised": t is not None, "version": t.version if t else 0})  # fmt: skip
     return {"items": out}
@@ -678,7 +751,7 @@ def _checked(event: str, channel: str, subject: str, body: str) -> None:
             raise field_error(name, err)
     if channel in ("sms", "whatsapp") and len(body) > 640:
         raise field_error("body", "Keep text messages under 640 characters")
-    if channel in ("in_app", "email") and not subject:
+    if channel in ("in_app", "email", "customer_email") and not subject:
         raise field_error("subject", "A title is needed")
 
 
@@ -698,13 +771,16 @@ def save_template(event: str, channel: str, body: TemplateIn, p: require("notifi
     t.version, t.updated_at = (t.version or 0) + 1, utcnow()
     record(db, p.user, "messages.template", "message_template", f"{event}/{channel}", f"Message wording changed: {EVENTS[event].label}, {channel}",
            {k: [before[k], getattr(t, k)] for k in before if before[k] != getattr(t, k)})  # fmt: skip
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:  # someone else saved this wording a moment ago
+        raise stale() from None
     return {"ok": True, "version": t.version}
 
 
 class PreviewIn(BaseModel):
     event: str
-    channel: Literal["in_app", "email", "sms", "whatsapp"]
+    channel: Literal["in_app", "email", "customer_email", "sms", "whatsapp"]
     subject: Text = ""
     body: Annotated[str, StringConstraints(max_length=2000)]
 

@@ -96,6 +96,7 @@ export function ReportPage() {
     <div className="field"><label htmlFor={`f-${k}`}>{label}</label>
       <select id={`f-${k}`} value={params.get(k) ?? ''} onChange={(e) => set(k, e.target.value)}>
         <option value="">All</option>{options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        {params.get(k) && !options.some(([v]) => v === params.get(k)) && <option value={params.get(k)!}>{params.get(k)!.split(',').map(words).join(', ')}</option>}
       </select></div>
   )
   const kindOf = (k: string) => parties.filter((p) => p.kinds.some((x) => (k === 'distributor' ? ['distributor', 'dealer'] : [k]).includes(x))).map((p) => [p.id, p.name] as [string, string])
@@ -138,7 +139,7 @@ export function ReportPage() {
           <div className="table-wrap"><table className="table report">
             <thead><tr>{data.columns.map((c) => <th key={c.key} scope="col">{c.label}</th>)}</tr></thead>
             <tbody>{data.items.map((row, i) => (
-              <tr key={String(row.id ?? i)}>{data.columns.map((c, j) => {
+              <tr key={i}>{data.columns.map((c, j) => {
                 const v = show(row[c.key], c.key)
                 const to = j === 0 ? linkOf(row) : ''
                 return <td key={c.key} className={typeof row[c.key] === 'number' ? 'num' : undefined}>{to ? <Link to={to}>{v}</Link> : v}</td>

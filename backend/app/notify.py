@@ -28,7 +28,7 @@ from app import audit
 from app.auth import DB, CurrentPrincipal
 from app.config import get_settings
 from app.jobs import enqueue, handler, periodic
-from app.masters import Limit, Offset, rules
+from app.masters import Limit, Offset, company_today, rules
 from app.messaging import EVENTS, queue, render, wording
 from app.models import (
     AmcContract,
@@ -40,9 +40,11 @@ from app.models import (
     Notification,
     Party,
     Project,
+    ProjectChange,
     PurchaseOrder,
     Quotation,
     QuotationRevision,
+    RequirementSheet,
     RolePermission,
     SalesOrder,
     Serial,
@@ -156,9 +158,24 @@ def _project(db, a):
     if a["action"] in ("sheet.submit", "project_change.request"):
         emit(db, "approval.requested", a["key"], {"number": pr.number, "summary": a["summary"], "by": a["by"]},
              link, holders(db, "projects.approve"), entity=("project", pr.id), actor_id=a["actor"])  # fmt: skip
-    else:
+    else:  # the sheet's author or the change's requester must act on the decision
+        who = {pr.manager_id, pr.created_by}
+        if sid := (a["changes"].get("sheet") or [None, None])[1]:
+            who.add(
+                db.scalar(
+                    select(RequirementSheet.prepared_by).where(
+                        RequirementSheet.id == uuid.UUID(sid)
+                    )
+                )
+            )
+        if cid := (a["changes"].get("change") or [None, None])[1]:
+            who.add(
+                db.scalar(
+                    select(ProjectChange.requested_by).where(ProjectChange.id == uuid.UUID(cid))
+                )
+            )
         emit(db, "approval.decided", a["key"], {"number": pr.number, "summary": a["summary"], "by": a["by"], "reason": a["reason"]},
-             link, {pr.manager_id, pr.created_by}, entity=("project", pr.id), actor_id=a["actor"])  # fmt: skip
+             link, who, entity=("project", pr.id), actor_id=a["actor"])  # fmt: skip
 
 
 def _warranty(db, a):
@@ -183,10 +200,10 @@ def _warranty(db, a):
 def _service(db, a):
     sr = db.get(ServiceRequest, a["id"])
     link, ent = f"/service/{sr.id}", ("service_request", sr.id)
-    if a["action"] == "service.open":
+    if a["action"] == "service.open":  # a public-form sender already saw "received" on screen
+        customer = None if sr.source == "public" else (sr.contact_phone, sr.updates_consent)
         emit(db, "service.status", a["key"], {"number": sr.number, "status": "received", "summary": a["summary"]},
-             link, holders(db, "service.create"), entity=ent, actor_id=a["actor"],
-             customer=(sr.contact_phone, sr.updates_consent))  # fmt: skip
+             link, holders(db, "service.create"), entity=ent, actor_id=a["actor"], customer=customer)  # fmt: skip
         return
     to = (a["changes"].get("status") or [None, sr.status])[1]
     emit(db, "service.status", a["key"], {"number": sr.number, "status": str(to).replace("_", " "), "summary": a["summary"]},
@@ -264,7 +281,7 @@ def check_due(db: Session, today: date | None = None) -> None:
     from app.inventory import summaries  # noqa: PLC0415  (inventory imports a lot)
     from app.warranty import add_months  # noqa: PLC0415
 
-    today = today or date.today()
+    today = today or company_today(db)
     b = _bucket(db, today)
     r = rules(db)
     buyers = holders(db, "purchasing.create")

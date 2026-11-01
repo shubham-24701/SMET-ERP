@@ -538,8 +538,9 @@ export function RulesPage() {
             <Field label="Announce maintenance visits (days ahead)" name="visit" type="number" min={1} max={90} defaultValue={r.amc_visit_notice_days} error={fields.amc_visit_notice_days} />
             <Field label="Repeat a reminder every (days)" name="repeat" type="number" min={1} max={90} defaultValue={r.reminder_repeat_days} error={fields.reminder_repeat_days} />
             <Field label="Escalate after (days late)" name="escalate" type="number" min={1} max={365} defaultValue={r.escalate_after_days ?? ''} error={fields.escalate_after_days} hint="Empty: no escalation." />
-            <SelectField label="Escalate to" name="role" defaultValue={r.escalation_role_id ?? ''} error={fields.escalation_role_id}
-              options={[['', 'Nobody'], ...(roles.data?.items ?? []).map((x) => [x.id, x.name] as [string, string])]} />
+            <SelectField key={roles.data ? 'roles' : 'loading'} label="Escalate to" name="role" defaultValue={r.escalation_role_id ?? ''} error={fields.escalation_role_id}
+              options={[['', 'Nobody'], ...(roles.data ? roles.data.items.map((x) => [x.id, x.name] as [string, string])
+                : r.escalation_role_id ? [[r.escalation_role_id, 'The role set now'] as [string, string]] : [])]} />
             <Field label="Country code for local phone numbers" name="cc" defaultValue={r.phone_country_code} error={fields.phone_country_code} hint="971 for the UAE: 050 123 4567 becomes +971 50 123 4567." />
           </div>
           <TextareaField label="Reason for the change" name="reason" maxLength={500} />

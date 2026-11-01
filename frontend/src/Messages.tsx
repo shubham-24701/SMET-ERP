@@ -109,7 +109,7 @@ type Delivery = { id: string; label: string; channel: string; mode: string; to: 
   attempts: number; error: string; created_at: string }
 type OptOut = { channel: string; address: string; reason: string; created_at: string }
 
-const CHANNEL: Record<string, string> = { in_app: 'In the app', email: 'Email', sms: 'SMS', whatsapp: 'WhatsApp' }
+const CHANNEL: Record<string, string> = { in_app: 'In the app', email: 'Email', customer_email: 'Email to customers', sms: 'SMS', whatsapp: 'WhatsApp' }
 const MODE: Record<string, string> = { off: 'Off', mock: 'Mock: recorded here, nothing sent', sandbox: 'Sandbox: test recipient only', production: 'Production: real recipients' }
 const SEND_TONE: Record<string, 'success' | 'warning' | 'danger' | 'neutral' | 'info'> = {
   delivered: 'success', sent: 'info', queued: 'neutral', sending: 'neutral', failed: 'danger', unknown: 'warning', blocked: 'warning', skipped: 'neutral' }
@@ -211,6 +211,7 @@ function Wording() {
   return (
     <>
       <div className="toolbar"><SelectField label="Channel" value={channel} onChange={(e) => setChannel(e.target.value)} options={Object.entries(CHANNEL)} /></div>
+      {shown.length === 0 && <p className="empty-line">No message uses this channel.</p>}
       <div className="table-wrap"><table className="table stack">
         <thead><tr><th scope="col">Message</th><th scope="col">For</th><th scope="col">Wording</th><th scope="col">State</th></tr></thead>
         <tbody>{shown.map((t) => (

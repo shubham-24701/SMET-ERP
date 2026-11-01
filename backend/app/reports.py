@@ -11,10 +11,12 @@ import csv
 import io
 import uuid
 from collections.abc import Callable
+from contextvars import ContextVar
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Annotated, Literal
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query, Response
 from openpyxl import Workbook
@@ -26,7 +28,7 @@ from app.admin import csv_cell
 from app.audit import record
 from app.auth import DB, CurrentPrincipal, Principal, require
 from app.inventory import conflict
-from app.masters import Limit, NumbersRoute, Offset, rules
+from app.masters import Limit, NumbersRoute, Offset, company_today, company_tz, rules
 from app.models import (
     AmcContract,
     AssemblyOrder,
@@ -93,15 +95,12 @@ class Report:
 
 
 def _between(col, f: Filters):
+    day = _day(col) if isinstance(col.type, DateTime) else col  # a moment counts on SMET's date
     out = []
     if f.date_from:
-        out.append(col >= f.date_from)
+        out.append(day >= f.date_from)
     if f.date_to:
-        out.append(
-            col < f.date_to + timedelta(days=1)
-            if isinstance(col.type, DateTime)
-            else col <= f.date_to
-        )
+        out.append(day <= f.date_to)
     return out
 
 
@@ -109,8 +108,25 @@ def _statuses(f: Filters) -> list[str]:
     return [s for s in (f.status or "").split(",") if s]
 
 
+# Today and the time zone where SMET works, set for each request by `_clock`: dates are company
+# dates (a PO made at 01:30 in Dubai on 1 Nov is a 1 Nov order), whatever the database's clock says.
+_now: ContextVar[tuple[date, str]] = ContextVar("report_clock")
+
+
+def _clock(db: Session) -> None:
+    _now.set((company_today(db), company_tz(db)))
+
+
 def _today() -> date:
-    return date.today()
+    return _now.get()[0]
+
+
+def _local(col):
+    return func.timezone(_now.get()[1], col)
+
+
+def _day(col):
+    return func.date(_local(col))
 
 
 # ---------- procurement ----------
@@ -126,7 +142,7 @@ def _purchase_orders(db, f):
                  _today() - PurchaseOrder.expected_arrival), else_=None)  # fmt: skip
     q = (select(PurchaseOrder.id, PurchaseOrder.number, Party.name.label("supplier"), PurchaseOrder.status,
                 PurchaseOrder.expected_arrival, late.label("days_late"), lines.c.ordered, lines.c.received,
-                lines.c.accepted, lines.c.rejected, func.date(PurchaseOrder.created_at).label("created"))
+                lines.c.accepted, lines.c.rejected, _day(PurchaseOrder.created_at).label("created"))
          .join(Party, Party.id == PurchaseOrder.supplier_id).outerjoin(lines, lines.c.po_id == PurchaseOrder.id)
          .where(*_between(PurchaseOrder.created_at, f)).order_by(PurchaseOrder.created_at.desc()))  # fmt: skip
     if st := _statuses(f):
@@ -151,7 +167,7 @@ def _rejected(db, f):
     q = (select(PurchaseOrder.id, PurchaseOrder.number, Party.name.label("supplier"), Item.code.label("item_code"),
                 Item.name.label("item"), PurchaseOrderLine.qty_received.label("received"),
                 PurchaseOrderLine.qty_rejected.label("rejected"), PurchaseOrderLine.qty_held.label("held"),
-                PurchaseOrderLine.qty_returned.label("returned"), func.date(PurchaseOrder.created_at).label("created"))
+                PurchaseOrderLine.qty_returned.label("returned"), _day(PurchaseOrder.created_at).label("created"))
          .join(PurchaseOrder, PurchaseOrder.id == PurchaseOrderLine.po_id).join(Party, Party.id == PurchaseOrder.supplier_id)
          .join(Item, Item.id == PurchaseOrderLine.item_id)
          .where(or_(PurchaseOrderLine.qty_rejected > 0, PurchaseOrderLine.qty_held > 0), *_between(PurchaseOrder.created_at, f))
@@ -222,8 +238,8 @@ def _moves(db, f):
 def _adjustments(db, f):
     req, dec = aliased(User), aliased(User)
     q = (select(StockAdjustment.id, StockAdjustment.number, StockAdjustment.status, StockAdjustment.reason,
-                req.name.label("requested_by"), func.date(StockAdjustment.created_at).label("created"),
-                dec.name.label("decided_by"), func.date(StockAdjustment.decided_at).label("decided"))
+                req.name.label("requested_by"), _day(StockAdjustment.created_at).label("created"),
+                dec.name.label("decided_by"), _day(StockAdjustment.decided_at).label("decided"))
          .join(req, req.id == StockAdjustment.requested_by).outerjoin(dec, dec.id == StockAdjustment.decided_by)
          .where(*_between(StockAdjustment.created_at, f)).order_by(StockAdjustment.created_at.desc()))  # fmt: skip
     if st := _statuses(f):
@@ -295,7 +311,7 @@ def _quotations(db, f):
              .group_by(QuotationLine.revision_id).subquery())  # fmt: skip
     q = (select(Quotation.id, Quotation.number, Party.name.label("customer"), Project.number.label("project"),
                 QuotationRevision.rev, QuotationRevision.status, QuotationRevision.currency, total.c.total,
-                QuotationRevision.valid_until, func.date(Quotation.created_at).label("created"))
+                QuotationRevision.valid_until, _day(Quotation.created_at).label("created"))
          .join(cur, cur.c.quotation_id == Quotation.id)
          .join(QuotationRevision, and_(QuotationRevision.quotation_id == Quotation.id, QuotationRevision.rev == cur.c.rev))
          .join(Party, Party.id == Quotation.customer_id).outerjoin(Project, Project.id == Quotation.project_id)
@@ -317,7 +333,7 @@ def _sales_orders(db, f):
     q = (select(SalesOrder.id, SalesOrder.number, Party.name.label("customer"), Project.number.label("project"), SalesOrder.status,
                 SalesOrder.delivery_date, lines.c.ordered, lines.c.dispatched, lines.c.delivered,
                 (func.coalesce(lines.c.ordered, 0) - func.coalesce(lines.c.dispatched, 0)).label("pending"),
-                func.date(SalesOrder.created_at).label("created"))
+                _day(SalesOrder.created_at).label("created"))
          .join(Party, Party.id == SalesOrder.customer_id).outerjoin(Project, Project.id == SalesOrder.project_id)
          .outerjoin(lines, lines.c.order_id == SalesOrder.id)
          .where(*_between(SalesOrder.created_at, f)).order_by(SalesOrder.created_at.desc()))  # fmt: skip
@@ -402,8 +418,10 @@ def _banks(db, f):
 
 # ---------- warranty ----------
 
-REG_STATUS = case((and_(WarrantyRegistration.status == "approved", WarrantyRegistration.expiry_date < func.current_date()), "expired"),
-                  (WarrantyRegistration.status == "approved", "active"), else_=WarrantyRegistration.status)  # fmt: skip
+
+def _reg_status():
+    return case((and_(WarrantyRegistration.status == "approved", WarrantyRegistration.expiry_date < _today()), "expired"),
+                (WarrantyRegistration.status == "approved", "active"), else_=WarrantyRegistration.status)  # fmt: skip
 
 
 def _warranties(db, f):
@@ -411,13 +429,13 @@ def _warranties(db, f):
     q = (select(WarrantyRegistration.id, WarrantyRegistration.number, Serial.serial, Item.name.label("item"),
                 WarrantyRegistration.customer_name.label("customer"),
                 func.coalesce(dist.name, WarrantyRegistration.distributor_name).label("distributor"),
-                REG_STATUS.label("status"), WarrantyRegistration.route, WarrantyRegistration.start_date,
-                WarrantyRegistration.expiry_date, func.date(WarrantyRegistration.created_at).label("created"))
+                _reg_status().label("status"), WarrantyRegistration.route, WarrantyRegistration.start_date,
+                WarrantyRegistration.expiry_date, _day(WarrantyRegistration.created_at).label("created"))
          .join(Serial, Serial.id == WarrantyRegistration.serial_id).join(Item, Item.id == Serial.item_id)
          .outerjoin(dist, dist.id == WarrantyRegistration.distributor_id)
          .where(*_between(WarrantyRegistration.created_at, f)).order_by(WarrantyRegistration.created_at.desc()))  # fmt: skip
     if st := _statuses(f):
-        q = q.where(REG_STATUS.in_(st))
+        q = q.where(_reg_status().in_(st))
     if f.item:
         q = q.where(Serial.item_id == f.item)
     if f.serial:
@@ -457,8 +475,8 @@ def _service(db, f):
     rep = aliased(Serial)
     q = (select(ServiceRequest.id, ServiceRequest.number, ServiceRequest.source, ServiceRequest.status, ServiceRequest.priority,
                 Party.name.label("customer"), func.coalesce(Serial.serial, ServiceRequest.reported_serial).label("serial"),
-                func.date(ServiceRequest.created_at).label("opened"),
-                case((ServiceRequest.status != "closed", func.current_date() - func.date(ServiceRequest.created_at)), else_=None).label("open_days"),
+                _day(ServiceRequest.created_at).label("opened"),
+                case((ServiceRequest.status != "closed", _today() - _day(ServiceRequest.created_at)), else_=None).label("open_days"),
                 ServiceRequest.resolution, rep.serial.label("replacement"))
          .outerjoin(Party, Party.id == ServiceRequest.customer_id).outerjoin(Serial, Serial.id == ServiceRequest.serial_id)
          .outerjoin(rep, rep.id == ServiceRequest.replacement_serial_id)
@@ -487,7 +505,7 @@ def _service(db, f):
 
 
 def _batteries(db, f):
-    reg = (select(WarrantyRegistration.serial_id, WarrantyRegistration.distributor_id, REG_STATUS.label("warranty"),
+    reg = (select(WarrantyRegistration.serial_id, WarrantyRegistration.distributor_id, _reg_status().label("warranty"),
                   WarrantyRegistration.expiry_date)
            .where(WarrantyRegistration.status.in_(("pending", "correction_required", "approved"))).subquery())  # fmt: skip
     q = (select(Serial.id, Serial.serial, Item.name.label("item"), Serial.status, Party.name.label("customer"),
@@ -692,6 +710,7 @@ def _checked(r: Report, f: Filters) -> None:
 def run(
     db: Session, r: Report, f: Filters, limit: int | None, offset: int = 0
 ) -> tuple[list[dict], int]:
+    _clock(db)
     q = r.build(db, f)
     if isinstance(q, list):
         return q[offset : offset + limit if limit else None], len(q)
@@ -702,6 +721,7 @@ def run(
 
 
 def count(db: Session, r: Report, f: Filters) -> int:
+    _clock(db)
     q = r.build(db, f)
     return (
         len(q)
@@ -744,6 +764,8 @@ def report_rows(name: str, p: CurrentPrincipal, db: DB, f: Annotated[Filters, Qu
 
 
 def _cell(v):
+    if isinstance(v, datetime):  # Excel has no time zones: the company's local time
+        return v.astimezone(ZoneInfo(_now.get()[1])).replace(tzinfo=None)
     if isinstance(v, Decimal):
         return float(v) if v != v.to_integral() else int(v)
     if isinstance(v, uuid.UUID):
@@ -756,19 +778,28 @@ def export_report(name: str, p: require("reports.export"), db: DB, f: Annotated[
                   format: Literal["csv", "xlsx"] = "csv") -> Response:  # fmt: skip
     r = _report(name, p)
     _checked(r, f)
-    rows, total = run(db, r, f, None)
-    if total > EXPORT_LIMIT:
+    if (total := count(db, r, f)) > EXPORT_LIMIT:  # counted before any row is loaded
         raise conflict(
             f"{total} rows is more than {EXPORT_LIMIT} for one download: narrow the filters"
         )
+    rows, _ = run(db, r, f, None)
     keys, heads = [k for k, _ in r.columns], [lab for _, lab in r.columns]
-    stamp = date.today().isoformat()
+    stamp = _today().isoformat()
     if format == "csv":
         out = io.StringIO()
         w = csv.writer(out)
         w.writerow(heads)
         for row in rows:
-            w.writerow(["" if row.get(k) is None else csv_cell(_cell(row.get(k))) for k in keys])
+            w.writerow(
+                [
+                    ""
+                    if (v := _cell(row.get(k))) is None
+                    else csv_cell(v)
+                    if isinstance(v, str)
+                    else v
+                    for k in keys
+                ]
+            )
         body, media = ("﻿" + out.getvalue()).encode(), "text/csv; charset=utf-8"
     else:
         wb = Workbook(write_only=True)

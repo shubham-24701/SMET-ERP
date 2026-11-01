@@ -52,6 +52,17 @@ def public_sr(phone, updates=True):
                          "issue": "Battery alarm keeps beeping"}), 202)  # fmt: skip
 
 
+def moved(coord, to="under_review"):
+    """The newest service request moves on: the customer who asked for updates hears about it."""
+    sr = ok(coord.get(f"{API}/service-requests"))["items"][0]
+    ok(
+        coord.post(
+            f"{API}/service-requests/{sr['id']}/status", json={"version": sr["version"], "to": to}
+        )
+    )
+    run_due_jobs()
+
+
 def inbox(c, **q):
     return ok(c.get(f"{API}/notifications", params=q))
 
@@ -172,13 +183,15 @@ def test_nothing_leaves_the_server_until_switched_on_and_allowed(
 
 
 def test_a_message_is_never_sent_twice(admin, user_with, monkeypatch):
-    user_with(perms=SERVICE)
+    coord = user_with(perms=SERVICE)
     monkeypatch.setattr(get_settings(), "external_sends", "production")
     channel(admin, "sms", mode="production", **TWILIO)
     fake = FakeHttp((503, {}))
     monkeypatch.setattr(messaging, "HTTP", fake)
     public_sr("+971 50 123 4567")
     run_due_jobs()
+    assert deliveries() == []  # the sender saw "received" on screen: no text for that
+    moved(coord)
     (d,) = deliveries()  # the provider was down: queued again for later, with the reason
     assert (d.status, d.attempts, len(fake.calls)) == ("queued", 1, 1) and "503" in d.error
     with SessionLocal() as db:  # as if a worker died during the provider call
@@ -198,7 +211,7 @@ def test_a_message_is_never_sent_twice(admin, user_with, monkeypatch):
 
 
 def test_sandbox_sends_only_to_the_test_recipient(admin, user_with, monkeypatch):
-    user_with(perms=SERVICE)
+    coord = user_with(perms=SERVICE)
     monkeypatch.setattr(get_settings(), "external_sends", "sandbox")
     wa = {"provider": "meta_cloud", "settings": {"phone_number_id": "1234567890", "api_version": "v21.0"},
           "secret": "not-a-real-token"}  # fmt: skip
@@ -212,27 +225,27 @@ def test_sandbox_sends_only_to_the_test_recipient(admin, user_with, monkeypatch)
     fake = FakeHttp((200, {"messages": [{"id": "wamid.1"}]}))
     monkeypatch.setattr(messaging, "HTTP", fake)
     public_sr("0501234567")
-    run_due_jobs()
+    moved(coord)
     ((_, url, kw),) = fake.calls
     assert url == "https://graph.facebook.com/v21.0/1234567890/messages"
     assert kw["body"]["to"] == "971550000000" and kw["body"]["template"]["name"] == "sr_status"
     params = [p["text"] for p in kw["body"]["template"]["components"][0]["parameters"]]
     assert (
-        params[0] == "Demo Trading LLC" and params[2] == "received"
+        params[0] == "Demo Trading LLC" and params[2] == "under review"
     )  # {company} {number} {status}
     (d,) = deliveries()
     assert (d.recipient, d.sent_to, d.status) == ("+971501234567", "+971550000000", "sent")
 
 
 def test_no_consent_or_an_opt_out_means_no_message(admin, user_with, no_network):
-    user_with(perms=SERVICE)
+    coord = user_with(perms=SERVICE)
     channel(admin, "sms", mode="mock")
     public_sr("0501234567", updates=False)
-    run_due_jobs()
+    moved(coord)
     assert deliveries() == []  # no consent asked for: nothing
     ok(admin.post(f"{API}/messages/opt-outs", json={"channel": "sms", "address": "+971501234567", "reason": "Asked by phone"}), 201)  # fmt: skip
     public_sr("0501234567")
-    run_due_jobs()
+    moved(coord)
     (d,) = deliveries()
     assert d.status == "skipped" and "opted out" in d.error
     r = admin.post(f"{API}/messages/deliveries/{d.id}/retry")

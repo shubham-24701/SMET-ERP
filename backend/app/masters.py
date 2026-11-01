@@ -7,9 +7,10 @@ and kind; a location's purpose while it holds stock). Names and descriptions sta
 
 import re
 import uuid
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.routing import APIRoute
@@ -183,6 +184,16 @@ NULLABLE_RULES = (
     "escalate_after_days",
     "escalation_role_id",
 )
+
+
+def company_tz(db: Session) -> str:
+    c = db.get(Company, 1)
+    return c.timezone if c else "Asia/Dubai"
+
+
+def company_today(db: Session) -> date:
+    """Today where SMET works, whatever the server's clock is set to."""
+    return datetime.now(ZoneInfo(company_tz(db))).date()
 
 
 def rules(db: Session) -> dict:
