@@ -117,6 +117,17 @@ replacement). Every warehouse gets a "Service workshop" area (purpose `repair`).
 
 Dashboards and reports read the tables above; they store nothing of their own.
 
+## Customization tables (0.7.0)
+
+| Table | Holds | Key rules |
+| --- | --- | --- |
+| `custom_fields` | A field SMET added to a kind of record: key, label, kind, options, required, help, order, on/off | (record kind, key) unique; kind and key never change, so stored values keep their meaning |
+| `custom_values` | The values of one record's custom fields (JSON) | (record kind, record id) key; values checked against the field's kind on save; values of switched-off fields kept |
+| `field_settings` | A built-in optional field renamed, hidden or required | Only the fields in `custom.BUILTIN`; hidden and required can't both be on |
+
+Workflow settings (approval switches, extra roles per event, service statuses and moves) are business
+rules in `company.rules`, changed in Rules & numbering and audited like the others.
+
 ## Planned entities (from the proposal, by phase)
 
 Phases 2 to 7 are built (above); file attachments arrived in Phase 5.

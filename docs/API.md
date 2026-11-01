@@ -136,3 +136,13 @@ the audit log (`access.denied`) in their own transaction.
 | Reports | `GET /reports` (the ones you may see), `GET /reports/{name}?date_from&date_to&item&serial&customer&distributor&supplier&warehouse&project&status&flag` | the report's area view permission |
 | Downloads | `GET /reports/{name}/export?format=csv\|xlsx` (up to 10,000 rows; audited with the filters) | reports.export + the report's permission |
 | Search | `GET /search?q=` (two characters or more; five of each kind) | signed in; each kind needs its view permission |
+
+## Customization routes (0.7.0)
+
+| Area | Routes | Permission |
+| --- | --- | --- |
+| Field rules for forms | `GET /fields/config` | signed in |
+| Fields admin | `GET /fields`; `POST /custom-fields`, `PUT /custom-fields/{id}`; `PUT /field-settings/{record}/{field}` | fields.configure |
+| Extra details | `GET`/`PUT /custom-values/{record}/{id}` | the record's view / edit permission |
+| Service flow | `GET /service/flow`; set with `PATCH /rules` (`sr_statuses`, `sr_moves`) | service.view; settings.configure |
+| Reports | each report now needs `reports.<name>` instead of its area's view permission | |
