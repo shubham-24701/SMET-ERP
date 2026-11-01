@@ -15,6 +15,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app import (
     assembly,
+    codes,
     dispatch,
     files,
     installation,
@@ -23,8 +24,11 @@ from app import (
     masters,
     procurement,
     projects,
+    public,
     sales,
+    service,
     trace,
+    warranty,
 )
 from app.admin import router as admin_router
 from app.audit import request_info
@@ -73,7 +77,9 @@ app = FastAPI(
 )
 
 MAX_BODY = 1 * 2**20  # JSON bodies
-UPLOAD_PATH = re.compile(r"^/api/v1/visits/[^/]+/files$")
+UPLOAD_PATH = re.compile(
+    r"^/api/v1/((visits|warranty-registrations|service-requests)/[^/]+/files|public/registrations)$"
+)
 
 
 class BodyLimit:
@@ -165,9 +171,12 @@ for module in (
     installation,
     files,
     trace,
+    warranty,
+    service,
+    codes,
+    public,
 ):
     api.include_router(module.router)
-api.include_router(trace.public)
 
 
 @api.get("/health/live", tags=["health"])

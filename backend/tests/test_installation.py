@@ -360,11 +360,8 @@ def test_qr_labels_lead_to_a_public_check_that_reveals_nothing_private(site):
     )  # a scanned label finds it
     anyone = new_client()
     v = ok(anyone.get(f"{API}/public/verify/{token}"))
-    assert v == {"serial": "B1", "product": "UNIT-2V", "status": "not_in_service"} or set(v) == {
-        "serial",
-        "product",
-        "status",
-    }
+    assert set(v) == {"serial", "product", "status", "warranty", "note"}
+    assert (v["serial"], v["status"], v["warranty"]) == ("B1", "not_in_service", {"state": "none"})
     assert "Desert Telecom" not in str(v) and "Tower" not in str(v)
     assert anyone.get(f"{API}/public/verify/{'0' * 32}").status_code == 404
     assert anyone.get(f"{API}/public/verify/../serials").status_code == 404

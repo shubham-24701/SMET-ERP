@@ -2,6 +2,41 @@
 
 Every result below was produced by running the command shown. Results that have not run yet say so.
 
+## 2026-10-30 · Phase 6 · local and CI
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Backend | `uv run ruff check .`, `ruff format --check .`, `uv run pytest -q -W error::DeprecationWarning` | clean; **127 passed** (109 before Phase 6, 9 Phase 6 scenarios, 9 review regressions) |
+| Migrations | downgrade to 0007, upgrade, `alembic check` | clean; 0008 Phase 6 |
+| Privileges | `has_table_privilege('smet_app', …)` | no DELETE on warranty, contract, service and alert tables |
+| Frontend | lint, typecheck, Vitest, build | clean; 7 passed |
+| Browser journeys | `npx playwright test` (local Chromium) | **6 passed**; `phase6.spec.ts` uses three browsers: the warranty policy entered on screen, the warranty approved by that policy at handover, an AMC with three planned visits, a stranger checking a battery and asking for service on the public page, the request run through a service visit, a maintenance alert verified, its code recorded, shown again with a reason, and closed, and the request closed; phone width without sideways scroll |
+| Regression check | the 9 review tests run against the code before the fixes | 9 failed before, 9 pass after |
+
+The brief's scenarios are covered by `test_aftersales.py`: 3 (registration, approval, refused
+correction audited), 4 (AMC, reminders, service request, reset code), 5 (replacement linked and
+warranty carried), 6 (refused attempts leak nothing; the security matrix covers every route).
+
+### Independent review of Phase 6 (2026-10-30)
+
+| # | Severity | Finding | Fix | Regression test |
+| --- | --- | --- | --- | --- |
+| 1 | High | Correcting a replacement's contact details reset its term to a full new one | A replacement's dates stay as the replacement rule set them | `test_correcting_a_replacement_keeps_its_term` |
+| 2 | High | A replacement for a battery whose warranty had expired got an approved warranty ending before it started | Only a warranty in force is carried over | `test_an_expired_warranty_carries_nothing_to_its_replacement` |
+| 3 | High | The public form told real, sold, unregistered serials apart through file errors | The file is judged before the serial is looked up | `test_the_public_form_answers_alike_even_with_a_bad_file` |
+| 4 | Medium | The battery timeline showed service text, alert recipients and warranty state to anyone with `stock.view` | Each group only for its own permission | `test_the_timeline_shows_after_sales_only_to_those_allowed` |
+| 5 | Medium | Cancelling a renewal draft left the original contract "renewed" for good | The original becomes active again | `test_cancelling_a_renewal_gives_the_contract_back` |
+| 6 | Medium | A request could close with its battery still at the workshop, or as not replaced after a replacement was sent | Both refused | `test_a_request_doesnt_close_with_its_battery_at_the_workshop` |
+| 7 | Medium | Under a handover-start policy, staff and public registrations could never be approved (no handover date field) | Handover date on the registration form | `test_staff_can_register_under_a_handover_policy` |
+| 8 | Medium | Two people sending the same replacement at once could both succeed (a stale copy of the battery was checked) | Locked serials are always read fresh (shared helper, so dispatch and assembly benefit too) | code review |
+| 9 | Medium | A battery at the workshop still showed as under contract; a contract listing batteries didn't follow a replacement | Only batteries at the customer are covered; the replacement joins the list | `test_a_battery_in_the_workshop_is_not_under_contract` |
+| 10 | Low | A replacement that once had its own warranty blocked the close | Its earlier registration ends | `test_a_refurbished_replacement_with_an_old_warranty_still_closes` |
+| 11 | Low | Files could be added to a closed request; an alert could be registered while its request closed | Refused; the request is locked | code review |
+| 12 | Low | Two public registrations of one serial at once gave a 500 | The second gets the same answer | code review |
+
+Recorded, not changed: dates use the server's clock (set the server to Asia/Dubai when deploying; P8),
+and behind a reverse proxy the public limits count the proxy's address (P8, checkpoint 4).
+
 ## 2026-10-30 · Phase 5 · local and CI
 
 | Check | Command | Result |

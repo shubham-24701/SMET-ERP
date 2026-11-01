@@ -87,9 +87,25 @@ A battery's status follows its bank: delivered (planned bank), installed, commis
 (handed over), removed. The lifecycle timeline is not a table: it is read from stock movements,
 inspections, dispatches, bank positions and completed visits, so it can't disagree with them.
 
+## Phase 6 tables
+
+| Table | Holds | Key rules |
+| --- | --- | --- |
+| `warranty_policies` | Per battery model: months, the event that starts it (sale, installation, commissioning, handover), automatic approval, proof needed, replacement rule, in force from | (model, start date) unique; terms of a policy in use never change; none shipped |
+| `warranty_registrations` | Battery, route (SMET installation, distributor, direct, public form, replacement), customer and contact, address, distributor, the four dates, policy, start and expiry, decision, end, the registration it replaces | At most one open (pending, correction required or approved) per battery (partial unique index); the app login can't delete |
+| `amc_contracts` | Customer, scope (customer, site, banks, chosen batteries), reference, period, visit interval, scope text, covered and excluded lists, status, the contract it renews | What it covers is worked out when asked; maintenance visits are `site_visits` with `amc_id` |
+| `service_requests` | Source, battery (or the serial as reported), bank, site, customer, contact, issue, priority, preferred visit, status and its history (who, when, why), coordinator, diagnosis, work done, parts used, outcome, replacement battery, acknowledgement | Allowed transitions only; closing needs no open visit or alert; service visits are `site_visits` with `service_request_id` |
+| `maintenance_alerts` | Battery, service request, description, verification (what was compared), the code **encrypted** (Fernet), recipient, issue date, supplier reference, expiry if the supplier states one, issuer, cleared or not as seen on site | Code recorded once, shown only with `codes.reveal` and a reason (audited), erased after the retention period |
+| `site_visits.amc_id`, `.service_request_id` | Links planned maintenance and service visits to their contract or request | Stages `maintenance` and `service`; their checks and photo rules work like the installation stages |
+| `files.uploaded_by` | Nullable: a file from the public form has no user | Owner types `visit`, `warranty`, `service`; each download checks the owner's permission |
+
+New stock movement kinds: `service_receipt` (battery into the workshop), `service_return` (back to the
+customer), `service_use` (a part used on a job), `service_replacement` (a battery sent as a
+replacement). Every warehouse gets a "Service workshop" area (purpose `repair`).
+
 ## Planned entities (from the proposal, by phase)
 
-Phases 2 to 5 are built (above).
+Phases 2 to 6 are built (above).
 
 - **4** enquiries, quotations and immutable revisions, sales orders; projects, sites, surveys,
   requirement sheets, milestones, tasks, scope changes; dispatches, lines with exact serials,

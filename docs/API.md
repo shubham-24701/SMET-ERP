@@ -103,3 +103,22 @@ Quantities are JSON numbers.
 
 Completing a visit answers 422 with `detail.missing` (a list in words) when something SMET requires
 is not recorded yet; the same list is on `GET /visits/{id}` as `missing`.
+
+## Phase 6 routes
+
+| Area | Routes | Permission |
+| --- | --- | --- |
+| Warranty policies | `GET /warranty-policies`; `POST /warranty-policies`, `PUT /warranty-policies/{id}` | warranty.view; warranty.configure |
+| Registrations | `GET /warranty-registrations[/{id}]`; `POST /warranty-registrations`, `PUT …/{id}`, `POST …/{id}/files` | warranty.view; warranty.create |
+| Decisions | `POST /warranty-registrations/{id}/approve`, `…/reject`, `…/request-correction` | warranty.approve (not the submitter's own) |
+| Corrections | `POST /warranty-registrations/{id}/correct` (approved only; reason required) | warranty.correct |
+| AMC | `GET /amc[/{id}]`, `/amc/reminders`; `POST /amc`, `PUT /amc/{id}`, `POST …/{id}/activate`, `…/cancel`, `…/renew` | amc.view; amc.create |
+| Service requests | `GET /service-requests[/{id}]`, `/service/people`; `POST /service-requests`, `PATCH …/{id}`, `POST …/{id}/status`, `…/close`, `…/files` | service.view; service.create |
+| Service visit | `POST /service-requests/{id}/visit` | service.create + installation.create |
+| Service stock | `POST /service-requests/{id}/receive`, `…/return-battery`, `…/parts`, `…/send-replacement` (each with an operation key) | service.create + stock.create |
+| Maintenance alerts | `GET /maintenance-alerts[/{id}]`; `POST /maintenance-alerts`, `…/{id}/verify`, `…/{id}/close` | codes.view; codes.create |
+| Reset codes | `POST /maintenance-alerts/{id}/code`, `…/{id}/reveal` (reason required, audited) | codes.reveal |
+| Public | `GET /public/verify/{token}`, `GET /public/lookup?serial=`; `POST /public/registrations` (multipart), `POST /public/service-requests` | none; 30 checks a minute and 5 submissions an hour per address |
+
+Refused attempts at approvals, corrections, codes, exports, settings, users and roles are written to
+the audit log (`access.denied`) in their own transaction.

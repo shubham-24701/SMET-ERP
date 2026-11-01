@@ -17,8 +17,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import any_, select
 from sqlalchemy.orm import Session
 
-from app.audit import request_info
-from app.auth import DB, rate_limit, require
+from app.auth import DB, Principal, require
 from app.config import get_settings
 from app.installation import site_ref
 from app.inventory import label, serial_row
@@ -31,19 +30,23 @@ from app.models import (
     Inspection,
     Item,
     Location,
+    MaintenanceAlert,
     Party,
     Serial,
     SerialComponent,
+    ServiceRequest,
     Site,
     SiteVisit,
     StockMove,
     User,
+    WarrantyRegistration,
 )
 from app.projects import _names
 from app.sales import party_ref
+from app.service import amc_of
+from app.warranty import warranty_of
 
 router = APIRouter(tags=["traceability"])
-public = APIRouter(prefix="/public", tags=["public"])
 TOKEN = re.compile(r"(?:/v/)?([0-9a-f]{32})/?$")
 MOVE_WORDS = {
     "receipt": "Received from the supplier", "transfer": "Moved", "issue": "Issued to assembly",
@@ -92,7 +95,7 @@ def _when(x) -> str:
 
 
 @router.get("/serials/{serial_id}/timeline")
-def timeline(serial_id: uuid.UUID, _: require("stock.view"), db: DB) -> dict:
+def timeline(serial_id: uuid.UUID, p: require("stock.view"), db: DB) -> dict:
     s = get_or_404(db, Serial, serial_id, "Serial number")
     events: list[dict] = []
     moves = db.scalars(
@@ -154,11 +157,108 @@ def timeline(serial_id: uuid.UUID, _: require("stock.view"), db: DB) -> dict:
             ):
                 events.append({"at": v.completed_at, "kind": "stage", "title": STAGE_WORDS[v.stage],
                                "detail": f"On {v.done_on}, {where}", "doc": {"type": "visit", "id": str(v.id), "number": v.number}})  # fmt: skip
+    events += after_sales(db, s, p)
     events.sort(key=lambda e: _when(e["at"]))
-    return {"serial": serial_row(db, s), "now": where_now(db, s), "events": events}
+    return {"serial": serial_row(db, s), "now": where_now(db, s, p), "events": events}
 
 
-def where_now(db: Session, s: Serial) -> dict:
+def after_sales(db: Session, s: Serial, p: Principal) -> list[dict]:
+    """Warranty decisions, service requests and maintenance alerts (never a code's value)."""
+    out = []
+    # Each group only for those allowed to see it: stock.view alone opens the timeline.
+    regs = select(WarrantyRegistration).where(WarrantyRegistration.serial_id == s.id)
+    for r in db.scalars(regs) if p.can("warranty.view") else []:
+        doc = {"type": "warranty", "id": str(r.id), "number": r.number}
+        out.append(
+            {"at": r.created_at, "kind": "warranty", "title": "Warranty registered", "doc": doc}
+        )
+        if r.decided_at and r.status in ("approved", "ended"):
+            out.append(
+                {
+                    "at": r.decided_at,
+                    "kind": "warranty",
+                    "title": "Warranty approved",
+                    "detail": f"{r.start_date} to {r.expiry_date}",
+                    "doc": doc,
+                }
+            )
+        elif r.decided_at and r.status == "rejected":
+            out.append(
+                {
+                    "at": r.decided_at,
+                    "kind": "warranty",
+                    "title": "Warranty registration rejected",
+                    "detail": r.decision_reason,
+                    "doc": doc,
+                }
+            )
+        if r.ended_on:
+            out.append(
+                {
+                    "at": r.ended_on,
+                    "kind": "warranty",
+                    "title": "Warranty ended",
+                    "detail": r.end_reason,
+                    "doc": doc,
+                }
+            )
+    for sr in (
+        []
+        if not p.can("service.view")
+        else db.scalars(
+            select(ServiceRequest).where(
+                (ServiceRequest.serial_id == s.id) | (ServiceRequest.replacement_serial_id == s.id)
+            )
+        )
+    ):
+        doc = {"type": "service", "id": str(sr.id), "number": sr.number}
+        role = "" if sr.serial_id == s.id else " (as the replacement)"
+        out.append(
+            {
+                "at": sr.created_at,
+                "kind": "service",
+                "title": f"Service request opened{role}",
+                "detail": sr.issue[:160],
+                "doc": doc,
+            }
+        )
+        closed = next((h for h in reversed(sr.history) if h["to"] == "closed"), None)
+        if closed:
+            out.append(
+                {
+                    "at": datetime.fromisoformat(closed["at"]),
+                    "kind": "service",
+                    "title": f"Service request closed: {sr.resolution.replace('_', ' ')}",
+                    "detail": sr.closure_notes[:160],
+                    "doc": doc,
+                }
+            )
+    alerts = select(MaintenanceAlert).where(MaintenanceAlert.serial_id == s.id)
+    for a in db.scalars(alerts) if p.can("codes.view") else []:
+        doc = {"type": "alert", "id": str(a.id), "number": a.number}
+        out.append(
+            {
+                "at": a.created_at,
+                "kind": "service",
+                "title": "Maintenance alert registered",
+                "detail": a.description[:160],
+                "doc": doc,
+            }
+        )
+        if a.issued_on:
+            out.append(
+                {
+                    "at": a.issued_on,
+                    "kind": "service",
+                    "title": "Reset code recorded",
+                    "detail": f"Given to {a.recipient}",
+                    "doc": doc,
+                }
+            )
+    return out
+
+
+def where_now(db: Session, s: Serial, p: Principal) -> dict:
     """Where the battery is: a bank position, a site, or a stock location."""
     out = {
         "status": s.status,
@@ -176,6 +276,12 @@ def where_now(db: Session, s: Serial) -> dict:
         out["site"] = site_ref(db, db.get(Site, s.site_id))
     if s.location_id:
         out["location"] = label(db, db.get(Location, s.location_id))
+    if p.can("warranty.view"):
+        out["warranty"] = warranty_of(db, s.id)
+    if p.can("amc.view"):
+        out["amc"] = [
+            {"id": c["id"], "number": c["number"], "ends_on": c["ends_on"]} for c in amc_of(db, s)
+        ]
     return out
 
 
@@ -199,25 +305,3 @@ def labels(ids: Annotated[str, Query(max_length=4000)], _: require("stock.view")
             out.append({"id": s.id, "serial": s.serial, "item": item_ref(i), "supplier_serial": s.supplier_serial,
                         "url": url, "qr": qr})  # fmt: skip
     return {"items": out, "public_base_url": get_settings().public_base_url}
-
-
-@public.get("/verify/{token}")
-def verify(token: str, db: DB) -> dict:
-    """What anyone holding the battery may see. Rate-limited so labels can't be guessed by trying."""
-    rate_limit(
-        f"verify:{request_info.get().get('ip', '')}",
-        30,
-        60,
-        "Too many checks; wait a minute and try again",
-    )
-    if not re.fullmatch(r"[0-9a-f]{32}", token):
-        raise HTTPException(404, "We can't find this label")
-    s = db.scalar(select(Serial).where(Serial.qr_token == token))
-    if s is None:
-        raise HTTPException(404, "We can't find this label")
-    item = db.get(Item, s.item_id)
-    return {
-        "serial": s.serial,
-        "product": item.name,
-        "status": PUBLIC_STATUS.get(s.status, "not_in_service"),
-    }

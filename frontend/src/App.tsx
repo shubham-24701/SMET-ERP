@@ -11,6 +11,7 @@ import { ProjectPage, ProjectsPage, SizingRulesPage } from './Projects'
 import { EnquiriesPage, QuotationPage, QuotationsPage, SalesOrderPage, SalesOrdersPage } from './Sales'
 import { PurchaseOrderPage, PurchaseOrdersPage, PurchaseRequestPage, PurchaseRequestsPage } from './Purchasing'
 import { CorrectionsPage, CountPage, MovesPage, ReservationsPage, SerialPage, SerialsPage, StockPage } from './Stock'
+import { AlertPage, AlertsPage, AmcListPage, AmcPage, PoliciesPage, RegistrationPage, ServiceRequestPage, ServiceRequestsPage, WarrantyPage } from './Aftersales'
 import { BankPage, BanksPage, LabelsPage, StageChecksPage, TracePage, VisitPage, VisitsPage } from './Installation'
 import { Shell } from './Shell'
 import { PageState } from './ui'
@@ -76,6 +77,15 @@ export default function App() {
             <Route path="installation/banks/:id" element={<Allowed perm="installation.view" me={me}><BankPage /></Allowed>} />
             <Route path="installation/checks" element={<StageChecksPage />} />
             <Route path="trace" element={<Allowed perm="stock.view" me={me}><TracePage /></Allowed>} />
+            <Route path="service" element={<Allowed perm="service.view" me={me}><ServiceRequestsPage /></Allowed>} />
+            <Route path="service/alerts" element={<Allowed perm="codes.view" me={me}><AlertsPage /></Allowed>} />
+            <Route path="service/alerts/:id" element={<Allowed perm="codes.view" me={me}><AlertPage /></Allowed>} />
+            <Route path="service/:id" element={<Allowed perm="service.view" me={me}><ServiceRequestPage /></Allowed>} />
+            <Route path="amc" element={<Allowed perm="amc.view" me={me}><AmcListPage /></Allowed>} />
+            <Route path="amc/:id" element={<Allowed perm="amc.view" me={me}><AmcPage /></Allowed>} />
+            <Route path="warranty" element={<Allowed perm="warranty.view" me={me}><WarrantyPage /></Allowed>} />
+            <Route path="warranty/policies" element={<Allowed perm="warranty.view" me={me}><PoliciesPage /></Allowed>} />
+            <Route path="warranty/:id" element={<Allowed perm="warranty.view" me={me}><RegistrationPage /></Allowed>} />
             <Route path="projects" element={<Allowed perm="projects.view" me={me}><ProjectsPage /></Allowed>} />
             <Route path="projects/rules" element={<Allowed perm="projects.view" me={me}><SizingRulesPage /></Allowed>} />
             <Route path="projects/:id" element={<Allowed perm="projects.view" me={me}><ProjectPage /></Allowed>} />

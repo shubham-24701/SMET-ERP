@@ -5,9 +5,13 @@
 Uses the test database (TEST_DATABASE_URL), never the working one.
 """
 
+import base64
 import os
 
 from tests.conftest_env import use_test_database
+
+# Before anything reads the settings (they are cached): a test-only key, not a real one.
+os.environ.setdefault("CODES_KEY", base64.urlsafe_b64encode(b"test-only " * 3 + b"!!").decode())
 
 use_test_database()
 

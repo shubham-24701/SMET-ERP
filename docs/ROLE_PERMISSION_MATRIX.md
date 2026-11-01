@@ -120,3 +120,17 @@ Installation work is recorded by the technicians named on a visit (`installation
 coordinator (`installation.create`) can record for them. A technician changes a bank only during a
 visit they are on that covers the bank. The public QR check needs no sign-in and shows only the
 serial number, the product and whether it is in service.
+
+### Phase 6 grants
+
+| Template | After-sales permissions |
+| --- | --- |
+| Warranty Administrator | warranty.view/create/approve/correct, service.view, amc.view, installation.view |
+| Service Coordinator | service.view/create, amc.view/create, warranty.view/create, codes.view/create, installation.view/create, stock.view/create |
+| Service Technician | service.view, installation.view/record (records service and maintenance visits), warranty.view, amc.view, codes.view |
+| Maintenance Code Authorizer | codes.view/create/reveal, service.view, warranty.view |
+| System Administrator | warranty.configure (policies) only; no approvals, corrections or codes |
+
+Reset-code access is `codes.reveal`, an ordinary business permission: the administrator grants it
+without holding it, so the administrator never sees a code. Nobody approves a warranty registration
+they submitted unless SMET allows it in Rules & numbering.

@@ -14,6 +14,7 @@ PUBLIC = {
     ("GET", "/api/v1/health/live"), ("GET", "/api/v1/health/ready"), ("GET", "/api/v1/auth/csrf"),
     ("GET", "/api/v1/auth/setup-status"), ("POST", "/api/v1/auth/setup"), ("POST", "/api/v1/auth/login"),
     ("POST", "/api/v1/auth/logout"), ("GET", "/api/v1/public/verify/{token}"),
+    ("GET", "/api/v1/public/lookup"), ("POST", "/api/v1/public/registrations"), ("POST", "/api/v1/public/service-requests"),
 }  # fmt: skip
 # Need a session but no permission: your own profile and password.
 SELF = {("GET", "/api/v1/auth/me"), ("POST", "/api/v1/auth/password")}

@@ -6,13 +6,14 @@ import '@fontsource/ibm-plex-sans/600.css'
 import '@fontsource/ibm-plex-mono/400.css'
 import './index.css'
 import App from './App.tsx'
-import { VerifyPage } from './Installation'
+import { PublicPage } from './Public'
 
-// A scanned QR label opens /v/<token>: the public check, without signing in.
-const token = /^\/v\/([0-9a-f]{32})\/?$/.exec(window.location.pathname)?.[1]
+// The public portal, without signing in: /v/<token> from a scanned QR label, /verify to type a serial.
+const token = /^\/v\/([^/]+)\/?$/.exec(window.location.pathname)?.[1]
+const isPublic = token !== undefined || /^\/verify\/?$/.test(window.location.pathname)
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    {token ? <VerifyPage token={token} /> : <App />}
+    {isPublic ? <PublicPage token={token} /> : <App />}
   </StrictMode>,
 )

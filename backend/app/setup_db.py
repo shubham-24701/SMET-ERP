@@ -18,6 +18,7 @@ import getpass
 import secrets
 
 import psycopg
+from cryptography.fernet import Fernet
 from psycopg import sql
 from psycopg.conninfo import make_conninfo
 
@@ -27,6 +28,23 @@ ENV = BACKEND_DIR / ".env"
 OWNER, APP = "smet_owner", "smet_app"
 DATABASES = {"smet": ("DATABASE_URL", "MIGRATION_DATABASE_URL"),
              "smet_test": ("TEST_DATABASE_URL", "TEST_MIGRATION_DATABASE_URL")}  # fmt: skip
+
+
+# What the app login may never do, matching the migrations (a re-run grants everything first).
+HISTORY_RIGHTS = (
+    ("audit_events", "UPDATE, DELETE, TRUNCATE"),
+    ("alembic_version", "INSERT, UPDATE, DELETE, TRUNCATE"),
+    ("stock_moves", "UPDATE, DELETE, TRUNCATE"),
+    ("bank_positions", "DELETE, TRUNCATE"),
+    ("site_visits", "DELETE, TRUNCATE"),
+    ("battery_banks", "DELETE, TRUNCATE"),
+    ("files", "UPDATE, DELETE, TRUNCATE"),
+    ("warranty_registrations", "DELETE, TRUNCATE"),
+    ("warranty_policies", "DELETE, TRUNCATE"),
+    ("amc_contracts", "DELETE, TRUNCATE"),
+    ("service_requests", "DELETE, TRUNCATE"),
+    ("maintenance_alerts", "DELETE, TRUNCATE"),
+)
 
 
 def url(user: str, password: str, host: str, port: int, db: str) -> str:
@@ -69,9 +87,7 @@ def setup(admin_url: str, host: str, port: int) -> dict[str, str]:
             conn.execute(sql.SQL("GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {}").format(
                 sql.Identifier(APP)))  # fmt: skip
             # ...except where the migrations take rights away again: history and the schema record.
-            for table, rights in (("audit_events", "UPDATE, DELETE, TRUNCATE"),
-                                  ("alembic_version", "INSERT, UPDATE, DELETE, TRUNCATE"),
-                                  ("stock_moves", "UPDATE, DELETE, TRUNCATE")):  # fmt: skip
+            for table, rights in HISTORY_RIGHTS:
                 if conn.execute("SELECT to_regclass(%s)", (f"public.{table}",)).fetchone()[0]:
                     conn.execute(sql.SQL("REVOKE " + rights + " ON {} FROM {}").format(
                         sql.Identifier(table), sql.Identifier(APP)))  # fmt: skip
@@ -106,7 +122,13 @@ def main() -> None:
         dbname="postgres",
         password=getpass.getpass("PostgreSQL superuser (postgres) password: "),
     )
-    write_env(setup(admin_url, args.host, args.port))
+    values = setup(admin_url, args.host, args.port)
+    if not any(
+        ln.startswith("CODES_KEY=") for ln in (ENV.read_text().splitlines() if ENV.exists() else [])
+    ):
+        # Encrypts maintenance reset codes. Made once and kept: a new key would lock the stored codes.
+        values["CODES_KEY"] = Fernet.generate_key().decode()
+    write_env(values)
     print(f"Done. Databases smet and smet_test are ready; their addresses are in {ENV}.")
     print("Next: uv run alembic upgrade head")
 

@@ -114,7 +114,8 @@ SEQUENCES = {"purchase_request": "PR", "supplier_quote": "SQ", "purchase_order":
              "goods_receipt": "GRN", "supplier_return": "SRN", "adjustment": "ADJ",
              "stock_count": "CNT", "assembly_order": "AO", "serial": "SMET", "enquiry": "ENQ",
              "quotation": "QT", "sales_order": "SO", "project": "PRJ", "dispatch": "DN",
-             "battery_bank": "BNK", "site_visit": "VIS"}  # fmt: skip
+             "battery_bank": "BNK", "site_visit": "VIS", "warranty": "WR", "amc": "AMC",
+             "service_request": "SR", "maintenance_alert": "MA"}  # fmt: skip
 
 
 def next_number(db: Session, doc_type: str) -> str:
@@ -157,6 +158,13 @@ RULE_DEFAULTS: dict = {
     "commission_photos_min": 0,
     "handover_photos_min": 0,
     "handover_with_open_issues": False,  # may a handover complete with open issues on its visit?
+    "maintenance_photos_min": 0,
+    "service_photos_min": 0,
+    "warranty_self_approval": False,  # may whoever submitted a registration approve it?
+    # The public check shows warranty dates only if SMET allows it (question 20).
+    "public_warranty_dates": False,
+    "amc_renewal_notice_days": 60,  # AMCs ending within this many days are listed for renewal (21c)
+    "code_retention_days": 365,  # reset codes are erased this long after their alert closes
 }
 
 
@@ -183,6 +191,12 @@ class RulesPatch(BaseModel):
     commission_photos_min: int | None = Field(default=None, ge=0, le=20)
     handover_photos_min: int | None = Field(default=None, ge=0, le=20)
     handover_with_open_issues: bool | None = None
+    maintenance_photos_min: int | None = Field(default=None, ge=0, le=20)
+    service_photos_min: int | None = Field(default=None, ge=0, le=20)
+    warranty_self_approval: bool | None = None
+    public_warranty_dates: bool | None = None
+    amc_renewal_notice_days: int | None = Field(default=None, ge=1, le=365)
+    code_retention_days: int | None = Field(default=None, ge=1, le=3650)
     reason: Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)] = ""
 
 
@@ -636,7 +650,8 @@ PURPOSE_LABEL = {"available": "Available stock", "inspection": "Awaiting inspect
 # Every new warehouse gets one area of each kind the workflows need; SMET adds racks and bays.
 STANDARD_LOCATIONS = [("STORE", "Main store", "available"), ("INSP", "Receiving inspection", "inspection"),
                       ("QUAR", "Quarantine", "quarantine"), ("REJ", "Rejected goods", "rejected"),
-                      ("ASSY", "Assembly floor", "assembly"), ("RET", "Customer returns", "returns")]  # fmt: skip
+                      ("ASSY", "Assembly floor", "assembly"), ("RET", "Customer returns", "returns"),
+                      ("REP", "Service workshop", "repair")]  # fmt: skip
 
 
 class WarehouseIn(BaseModel):

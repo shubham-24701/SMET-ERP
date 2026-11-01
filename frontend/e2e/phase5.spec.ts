@@ -123,7 +123,7 @@ test('batteries delivered to a site are installed, commissioned and traced to a 
   await shot(page, '32-label')
   const stranger = await (await browser.newContext()).newPage()
   await stranger.goto(`/v/${label.url.split('/').at(-1)}`)
-  await expect(stranger.getByRole('heading', { name: 'Genuine SMET battery' })).toBeVisible()
+  await expect(stranger.getByRole('heading', { name: 'SMET has a record of this battery' })).toBeVisible()
   await expect(stranger.getByText(serials[0])).toBeVisible()
   await expect(stranger.getByText(`Desert Telecom ${s}`)).toHaveCount(0)
   await expect(stranger.getByText('Tower A')).toHaveCount(0)

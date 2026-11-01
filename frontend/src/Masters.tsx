@@ -430,14 +430,17 @@ export function WarehousesPage() {
 // ---------- business rules and document numbering ----------
 
 type Rules = { po_auto_approve_up_to: string | number | null; po_self_approval: boolean; adjustment_self_approval: boolean
-  install_photos_min: number; commission_photos_min: number; handover_photos_min: number; handover_with_open_issues: boolean }
+  install_photos_min: number; commission_photos_min: number; handover_photos_min: number; handover_with_open_issues: boolean
+  maintenance_photos_min: number; service_photos_min: number; warranty_self_approval: boolean; public_warranty_dates: boolean
+  amc_renewal_notice_days: number; code_retention_days: number }
 type Seq = { doc_type: string; prefix: string; padding: number; yearly: boolean; next: string }
 const DOCS: Record<string, string> = {
   purchase_request: 'Purchase requests', supplier_quote: 'Supplier quotations', purchase_order: 'Purchase orders',
   goods_receipt: 'Goods receipts', supplier_return: 'Returns to suppliers', adjustment: 'Stock corrections',
   stock_count: 'Stock counts', assembly_order: 'Assembly orders', serial: 'Battery serial numbers',
   enquiry: 'Enquiries', quotation: 'Quotations', sales_order: 'Sales orders', project: 'Projects', dispatch: 'Dispatches',
-  battery_bank: 'Battery banks', site_visit: 'Site visits',
+  battery_bank: 'Battery banks', site_visit: 'Site visits', warranty: 'Warranty registrations', amc: 'Maintenance contracts',
+  service_request: 'Service requests', maintenance_alert: 'Maintenance alerts',
 }
 
 export function RulesPage() {
@@ -491,6 +494,30 @@ export function RulesPage() {
           <label className="check"><input type="checkbox" name="open_issues" defaultChecked={r.handover_with_open_issues} /> <span>A handover may complete with issues still open on its visit</span></label>
           <TextareaField label="Reason for the change" name="reason" maxLength={500} />
           {edit && <button className="btn btn-primary" disabled={!!action.busy}>Save evidence rules</button>}
+        </fieldset>
+      </form>
+      <form className="settings-row" noValidate onSubmit={(e) => {
+        e.preventDefault()
+        const fd = new FormData(e.currentTarget)
+        const n = (k: string) => Number(fd.get(k) ?? 0)
+        setFields({})
+        void action.run('aftersales', () => api('/rules', { method: 'PATCH', body: { version: rules.data!.version, warranty_self_approval: fd.get('self') === 'on',
+          public_warranty_dates: fd.get('dates') === 'on', amc_renewal_notice_days: n('notice'), code_retention_days: n('retention'),
+          maintenance_photos_min: n('mphotos'), service_photos_min: n('sphotos'), reason: fd.get('reason') } })
+          .catch((err) => { setFields(fieldsOf(err)); throw err }))
+      }}>
+        <div><h2>After-sales</h2><p className="muted">Warranty decisions, what the public check shows, renewal reminders and how long reset codes are kept (open questions 17–22).</p></div>
+        <fieldset className="settings-panel plain" disabled={!edit}>
+          <label className="check"><input type="checkbox" name="self" defaultChecked={r.warranty_self_approval} /> <span>Whoever submitted a warranty registration may approve it</span></label>
+          <label className="check"><input type="checkbox" name="dates" defaultChecked={r.public_warranty_dates} /> <span>The public check shows warranty start and end dates</span></label>
+          <div className="grid-fields">
+            <Field label="Renewal reminder (days before an AMC ends)" name="notice" type="number" min={1} max={365} defaultValue={r.amc_renewal_notice_days} error={fields.amc_renewal_notice_days} />
+            <Field label="Keep reset codes for (days after the alert closes)" name="retention" type="number" min={1} max={3650} defaultValue={r.code_retention_days} error={fields.code_retention_days} />
+            <Field label="Photographs at a maintenance visit" name="mphotos" type="number" min={0} max={20} defaultValue={r.maintenance_photos_min} />
+            <Field label="At a service visit" name="sphotos" type="number" min={0} max={20} defaultValue={r.service_photos_min} />
+          </div>
+          <TextareaField label="Reason for the change" name="reason" maxLength={500} />
+          {edit && <button className="btn btn-primary" disabled={!!action.busy}>Save after-sales rules</button>}
         </fieldset>
       </form>
       <section className="settings-row">
