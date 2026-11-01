@@ -84,7 +84,10 @@ def emit(db: Session, event: str, key: str, values: dict, link: str, users, *,
     v["company"] = company.name if company else "SMET"
     ent = (entity[0], str(entity[1]))
     staff = wording(db, event, "in_app")
-    ids = {u for u in users if u} - {actor_id}
+    also = rules(db)["event_roles"].get(
+        event, []
+    )  # roles SMET added to this event (Rules & numbering)
+    ids = ({u for u in users if u} | set().union(*(members(db, r) for r in also))) - {actor_id}
     for u in db.scalars(select(User).where(User.id.in_(ids), User.active)) if ids else []:
         if event in (u.muted_events or []):
             continue

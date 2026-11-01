@@ -479,7 +479,7 @@ def submit_quotation(
     rl, company = rules(db), db.get(Company, 1)
     r.status, r.submitted_by, r.submitted_at = "submitted", p.user.id, utcnow()
     limit = rl["quote_auto_approve_up_to"]
-    if (limit is not None and r.currency == company.currency and row["total"] <= Decimal(str(limit))
+    if not rl["quote_approval_required"] or (limit is not None and r.currency == company.currency and row["total"] <= Decimal(str(limit))
             and row["max_discount"] <= Decimal(str(rl["quote_max_discount_pct"]))):  # fmt: skip
         r.status, r.decided_at = "approved", utcnow()
         r.decision_reason = "Approved automatically: within the limits in Rules & numbering"
@@ -624,6 +624,7 @@ def convert(quotation_id: uuid.UUID, body: ConvertIn, p: require("sales.create")
                     project_id=qt.project_id, currency=r.currency, customer_ref=r.customer_ref,
                     delivery_date=body.delivery_date, delivery_address=body.delivery_address, notes=body.notes,
                     created_by=p.user.id)  # fmt: skip
+    so.skip_required = True  # made by the system: required fields are filled later
     db.add(so)
     try:
         db.flush()

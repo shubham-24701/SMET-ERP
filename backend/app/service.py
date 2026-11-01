@@ -420,6 +420,7 @@ def renew_amc(amc_id: uuid.UUID, body: RenewIn, p: require("amc.create"), db: DB
                     starts_on=body.starts_on, ends_on=body.ends_on, visit_every_months=body.visit_every_months or c.visit_every_months,
                     service_scope=c.service_scope, covered=c.covered, excluded=c.excluded, renewed_from_id=c.id,
                     created_by=p.user.id)  # fmt: skip
+    n.skip_required = True  # made by the system: required fields are filled later
     db.add(n)
     c.status, c.version = "renewed", c.version + 1
     db.flush()
@@ -431,6 +432,8 @@ def renew_amc(amc_id: uuid.UUID, body: RenewIn, p: require("amc.create"), db: DB
 # ======================= service requests =======================
 
 OPEN_SR = ("new", "under_review", "scheduled", "in_progress", "pending_action")
+SR_BUILTIN = {"new": "New", "under_review": "Under review", "scheduled": "Scheduled", "in_progress": "In progress",
+              "pending_action": "Pending action", "closed": "Closed"}  # fmt: skip
 ALLOWED = {
     "new": {"under_review", "scheduled"},
     "under_review": {"scheduled", "in_progress", "pending_action"},
@@ -438,6 +441,21 @@ ALLOWED = {
     "in_progress": {"pending_action", "scheduled"},
     "pending_action": {"under_review", "scheduled", "in_progress"},
 }  # closing has its own action, from any open status
+
+
+def sr_flow(db: Session) -> tuple[dict[str, str], dict[str, list[str]]]:
+    """Statuses (key -> label) and allowed moves, as SMET set them (Rules & numbering), else the defaults.
+    The built-in statuses always exist: visits, closing and reports rely on them."""
+    r = rules(db)
+    statuses = SR_BUILTIN | {s["key"]: s["label"] for s in r["sr_statuses"]}
+    moves = r["sr_moves"] or {k: sorted(v) for k, v in ALLOWED.items()}
+    return statuses, moves
+
+
+@router.get("/service/flow")
+def get_flow(_: require("service.view"), db: DB) -> dict:
+    statuses, moves = sr_flow(db)
+    return {"statuses": statuses, "moves": moves, "builtin": list(SR_BUILTIN)}
 
 
 def _move(sr: ServiceRequest, user: User | None, to: str, reason: str = "") -> None:
@@ -502,7 +520,9 @@ def list_srs(
     offset: Offset = 0,
 ) -> dict:
     query = select(ServiceRequest).outerjoin(Serial, Serial.id == ServiceRequest.serial_id)
-    if status_:
+    if status_ == "open":
+        query = query.where(ServiceRequest.status != "closed")
+    elif status_:
         query = query.where(ServiceRequest.status.in_(status_.split(",")))
     if priority:
         query = query.where(ServiceRequest.priority.in_(priority.split(",")))
@@ -644,14 +664,19 @@ def update_sr(sr_id: uuid.UUID, body: SrPatch, p: require("service.create"), db:
 
 class StatusIn(BaseModel):
     version: int
-    to: Literal["under_review", "scheduled", "in_progress", "pending_action"]
+    to: Annotated[str, StringConstraints(pattern=r"^[a-z_]{2,16}$")]
     reason: Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)] = ""
 
 
 @router.post("/service-requests/{sr_id}/status")
 def move_sr(sr_id: uuid.UUID, body: StatusIn, p: require("service.create"), db: DB) -> dict:
     sr = _open_sr(db, sr_id, body.version)
-    if body.to not in ALLOWED[sr.status]:
+    statuses, moves = sr_flow(db)
+    if (
+        body.to not in moves.get(sr.status, [])
+        or body.to not in statuses
+        or body.to in ("new", "closed")
+    ):
         raise conflict(
             f"A request that is {sr.status.replace('_', ' ')} can't go to {body.to.replace('_', ' ')}"
         )

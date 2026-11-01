@@ -48,7 +48,8 @@ def test_filters_a_report_does_not_offer_are_refused(site):
 
 
 def test_dashboards_show_only_what_the_person_may_see_and_each_figure_opens_its_rows(user_with):
-    buyer = user_with(perms=["purchasing.view", "purchasing.create", "items.view", "items.edit", "parties.view", "parties.edit"])  # fmt: skip
+    buyer = user_with(perms=["purchasing.view", "purchasing.create", "items.view", "items.edit", "parties.view", "parties.edit",
+                             "reports.purchase_orders", "reports.rejected_receipts"])  # fmt: skip
     approver = user_with(perms=["purchasing.view", "purchasing.approve"])
     approved_po(buyer, approver, supplier(buyer), [(item(buyer, "CELL"), 3, 2)])
     areas = ok(buyer.get(f"{API}/dashboards"))["areas"]
@@ -80,7 +81,7 @@ def test_every_dashboard_figure_points_at_a_real_report_and_filters():
 
 def test_downloads_need_their_permission_and_are_audited(user_with):
     viewer = user_with(perms=["purchasing.view", "purchasing.create", "items.view", "items.edit", "parties.view", "parties.edit"])  # fmt: skip
-    exporter = user_with(perms=["purchasing.view", "reports.export"])
+    exporter = user_with(perms=["reports.purchase_orders", "reports.export"])
     sup = ok(viewer.post(f"{API}/parties", json={"code": "EVIL", "name": "=HYPERLINK(1)", "kinds": ["supplier"]}), 201)  # fmt: skip
     approved_po(
         viewer,

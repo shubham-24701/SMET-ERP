@@ -36,6 +36,7 @@ from app.models import (
     Reservation,
     Role,
     Serial,
+    ServiceRequest,
     StockBalance,
     StockMove,
     SupplierItem,
@@ -175,6 +176,12 @@ RULE_DEFAULTS: dict = {
     "escalate_after_days": None,
     "escalation_role_id": None,
     "phone_country_code": "971",  # for numbers written locally, e.g. 050 123 4567
+    # Workflow settings: switching an approval off approves on submission (recorded as automatic).
+    "po_approval_required": True,
+    "quote_approval_required": True,
+    "event_roles": {},  # event -> role ids also told, besides those whose permissions cover it
+    "sr_statuses": [],  # extra service-request statuses [{key, label}] besides the built-in ones
+    "sr_moves": {},  # status -> statuses it may move to; empty = the built-in moves
 }
 
 
@@ -199,6 +206,38 @@ def company_today(db: Session) -> date:
 def rules(db: Session) -> dict:
     c = db.get(Company, 1)  # None before first-run setup: the worker's checks still run
     return RULE_DEFAULTS | ((c.rules if c else None) or {})
+
+
+class SrStatus(BaseModel):
+    key: Annotated[str, StringConstraints(pattern=r"^[a-z][a-z_]{1,15}$")]
+    label: Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=40)]
+
+
+def _check_workflow(db: Session, after: dict) -> None:
+    from app.messaging import EVENTS  # noqa: PLC0415  (messaging imports this module)
+    from app.service import ALLOWED, SR_BUILTIN  # noqa: PLC0415
+
+    for event, roles in after["event_roles"].items():
+        if event not in EVENTS:
+            raise field_error("event_roles", f"Unknown event {event}")
+        if any(db.get(Role, uuid.UUID(str(r))) is None for r in roles):
+            raise field_error("event_roles", "Choose existing roles")
+    keys = [s["key"] for s in after["sr_statuses"]]
+    if set(keys) & set(SR_BUILTIN) or len(set(keys)) != len(keys):
+        raise field_error("sr_statuses", "Each new status needs its own name, not a built-in one")
+    statuses = set(SR_BUILTIN) | set(keys)
+    moves = after["sr_moves"] or ALLOWED
+    for frm, tos in moves.items():
+        if frm not in statuses or frm == "closed" or not set(tos) <= statuses - {"new", "closed"}:
+            raise field_error(
+                "sr_moves", f"Moves from {frm} name unknown statuses (closing has its own button)"
+            )
+    used = {s for k, v in moves.items() for s in (k, *v)}
+    if stranded := set(keys) - used:
+        raise field_error("sr_moves", f"No move reaches or leaves {', '.join(sorted(stranded))}")
+    if any(db.scalar(select(func.count()).select_from(ServiceRequest).where(ServiceRequest.status == s))
+           for s in set(r["key"] for r in rules(db)["sr_statuses"]) - statuses):  # fmt: skip
+        raise field_error("sr_statuses", "A status still in use by open requests can't be removed")
 
 
 class RulesPatch(BaseModel):
@@ -231,6 +270,11 @@ class RulesPatch(BaseModel):
     escalate_after_days: int | None = Field(default=None, ge=1, le=365)
     escalation_role_id: uuid.UUID | None = None
     phone_country_code: str | None = Field(default=None, pattern=r"^[1-9]\d{0,3}$")
+    po_approval_required: bool | None = None
+    quote_approval_required: bool | None = None
+    event_roles: dict[str, list[uuid.UUID]] | None = None
+    sr_statuses: list[SrStatus] | None = None
+    sr_moves: dict[str, list[str]] | None = None
     reason: Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)] = ""
 
 
@@ -252,7 +296,12 @@ def update_rules(body: RulesPatch, p: require("settings.configure"), db: DB) -> 
             continue
         if k == "escalation_role_id" and v is not None and db.get(Role, v) is None:
             raise field_error("escalation_role_id", "Choose one of the roles")
+        if k == "event_roles":
+            v = {e: [str(r) for r in rs] for e, rs in v.items() if rs}
+        elif k == "sr_statuses":
+            v = [s.model_dump() for s in v]
         after[k] = str(v) if isinstance(v, Decimal | uuid.UUID) else v
+    _check_workflow(db, after)
     c.rules = {k: after[k] for k in RULE_DEFAULTS}
     c.version += 1
     record(

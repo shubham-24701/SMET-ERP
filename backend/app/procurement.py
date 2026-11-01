@@ -332,6 +332,7 @@ def order_from_quote(quote_id: uuid.UUID, p: require("purchasing.create"), db: D
     po = PurchaseOrder(number=next_number(db, "purchase_order"), supplier_id=q.supplier_id, currency=q.currency,
                        supplier_ref=q.supplier_ref, pr_id=q.pr_id, quote_id=q.id, terms=supplier.terms,
                        created_by=p.user.id, editors=[p.user.id])  # fmt: skip
+    po.skip_required = True  # made by the system: required fields are filled later
     db.add(po)
     db.flush()
     db.add_all(PurchaseOrderLine(po_id=po.id, item_id=ln.item_id, qty_ordered=ln.qty, unit_price=ln.unit_price)
@@ -515,7 +516,12 @@ def submit_po(
     total = po_row(db, o)["total"]
     limit = rules(db)["po_auto_approve_up_to"]
     company_currency = db.get(Company, 1).currency
-    if limit is not None and o.currency == company_currency and total <= Decimal(str(limit)):
+    if not rules(db)["po_approval_required"]:
+        o.status, o.decided_at = "approved", utcnow()
+        o.decision_reason = (
+            "Approved automatically: purchase order approval is switched off in Rules & numbering"
+        )
+    elif limit is not None and o.currency == company_currency and total <= Decimal(str(limit)):
         o.status, o.decided_at = "approved", utcnow()
         o.decision_reason = f"Approved automatically: {total:.2f} {o.currency} is within the {Decimal(str(limit)):.2f} limit"
     o.version += 1

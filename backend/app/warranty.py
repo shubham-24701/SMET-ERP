@@ -143,8 +143,11 @@ def auto_check(db: Session, r: WarrantyRegistration) -> None:
         _approve(db, r, None, "Every requirement of the policy was met")
 
 
-def _new(db: Session, **kw) -> WarrantyRegistration:
+def _new(db: Session, auto: bool = True, **kw) -> WarrantyRegistration:
     r = WarrantyRegistration(number=next_number(db, "warranty"), **kw)
+    r.skip_required = (
+        auto  # opened by the system (handover, replacement): required fields come later
+    )
     try:
         with db.begin_nested():
             db.add(r)
@@ -401,7 +404,7 @@ def register(body: RegIn, p: require("warranty.create"), db: DB) -> dict:
     data = body.model_dump(exclude={"serial"})
     if body.customer_id and not body.customer_name:
         data["customer_name"] = db.get(Party, body.customer_id).name
-    r = _new(db, serial_id=s.id, submitted_by=p.user.id, **data)
+    r = _new(db, auto=False, serial_id=s.id, submitted_by=p.user.id, **data)
     record(
         db,
         p.user,

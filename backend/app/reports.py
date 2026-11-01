@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session, aliased
 from app.admin import csv_cell
 from app.audit import record
 from app.auth import DB, CurrentPrincipal, Principal, require
+from app.custom import active_fields, values_for
 from app.inventory import conflict
 from app.masters import Limit, NumbersRoute, Offset, company_today, company_tz, rules
 from app.models import (
@@ -84,7 +85,7 @@ FILTER_NAMES = [k for k in Filters.model_fields if k != "flag"]
 class Report:
     title: str
     area: str
-    perm: str
+    perm: str  # the area's view permission: who got this report's own permission when it arrived
     columns: tuple[tuple[str, str], ...]  # (key, heading)
     filters: tuple[str, ...]
     build: Callable[[Session, Filters], Select | list[dict]]
@@ -496,6 +497,8 @@ def _service(db, f):
         q = q.where(Serial.item_id == f.item)
     if f.project:
         q = q.where(ServiceRequest.site_id.in_(select(Site.id).where(Site.project_id == f.project)))
+    if f.flag == "open":
+        q = q.where(ServiceRequest.status != "closed")
     if f.flag == "replaced":
         q = q.where(ServiceRequest.replacement_serial_id.is_not(None))
     return q
@@ -613,7 +616,7 @@ REPORTS: dict[str, Report] = {
          ("serial", "Serial"), ("opened", "Opened"), ("open_days", "Open for (days)"), ("resolution", "Resolution"),
          ("replacement", "Replacement")),
         (D, IT, S, C, P, ST), _service, ("new", "under_review", "scheduled", "in_progress", "pending_action", "closed"),
-        {"replaced": "Replacements only"}, date_label="Opened", link="/service/{id}"),
+        {"open": "Open only", "replaced": "Replacements only"}, date_label="Opened", link="/service/{id}"),
     "batteries": Report("Battery traceability", "traceability", "stock.view",
         (("serial", "Serial"), ("item", "Battery"), ("status", "Status"), ("customer", "Customer"), ("site", "Site"),
          ("project", "Project"), ("warehouse", "Warehouse"), ("location", "Location"), ("warranty", "Warranty"),
@@ -623,7 +626,6 @@ REPORTS: dict[str, Report] = {
          "in_repair", "written_off"), link="/stock/serials/{id}"),
 }  # fmt: skip
 
-OPEN_SR = "new,under_review,scheduled,in_progress,pending_action"
 # Each dashboard figure: (label, report, filters). Its number is that report's row count.
 AREAS: dict[str, tuple[str, list[tuple[str, str, dict]]]] = {
     "procurement": ("Procurement", [
@@ -664,7 +666,7 @@ AREAS: dict[str, tuple[str, list[tuple[str, str, dict]]]] = {
     "service": ("Maintenance and service", [
         ("Maintenance visits coming up", "maintenance_visits", {"flag": "upcoming"}),
         ("Overdue maintenance visits", "maintenance_visits", {"flag": "late"}),
-        ("Open service requests", "service_requests", {"status": OPEN_SR}),
+        ("Open service requests", "service_requests", {"flag": "open"}),
         ("Replacements", "service_requests", {"flag": "replaced"}),
         ("Contracts to renew", "amc_contracts", {"flag": "ending"})]),
     "traceability": ("Battery traceability", [
@@ -689,12 +691,21 @@ def _report(name: str, p: Principal) -> Report:
     r = REPORTS.get(name)
     if r is None:
         raise HTTPException(404, "There is no such report")
-    if r.perm not in p.permissions:
+    if f"reports.{name}" not in p.permissions:
         raise HTTPException(403, "You don't have permission to see this report")
     return r
 
 
-def _checked(r: Report, f: Filters) -> None:
+def statuses_of(db: Session, name: str, r: Report) -> list[str]:
+    """Service requests may have statuses SMET added (Rules & numbering)."""
+    if name == "service_requests":
+        from app.service import sr_flow  # noqa: PLC0415
+
+        return list(sr_flow(db)[0])
+    return list(r.statuses)
+
+
+def _checked(db: Session, name: str, r: Report, f: Filters) -> None:
     allowed = {"date_from" if x == "date" else x for x in r.filters} | (
         {"date_to"} if "date" in r.filters else set()
     )
@@ -703,7 +714,7 @@ def _checked(r: Report, f: Filters) -> None:
         raise HTTPException(422, f"This report can't be filtered by {', '.join(sorted(extra))}")
     if f.flag and f.flag not in (r.flags or {}):
         raise HTTPException(422, "Unknown option for this report")
-    if bad := set(_statuses(f)) - set(r.statuses):
+    if bad := set(_statuses(f)) - set(statuses_of(db, name, r)):
         raise HTTPException(422, f"Unknown status {', '.join(sorted(bad))}")
 
 
@@ -730,6 +741,31 @@ def count(db: Session, r: Report, f: Filters) -> int:
     )
 
 
+# Reports whose rows are one kind of record: that record's custom fields become extra columns.
+REPORT_ENTITY = {"purchase_orders": "purchase_order", "stock_position": "item", "assembly_orders": "assembly_order",
+                 "quotations": "quotation", "sales_orders": "sales_order", "dispatches": "dispatch", "site_visits": "site_visit",
+                 "maintenance_visits": "site_visit", "banks": "bank", "warranties": "warranty_registration",
+                 "amc_contracts": "amc_contract", "service_requests": "service_request"}  # fmt: skip
+
+
+def columns(db: Session, name: str, r: Report) -> list[tuple[str, str]]:
+    extra = (
+        [(f"cf_{f.key}", f.label) for f in active_fields(db, REPORT_ENTITY[name])]
+        if name in REPORT_ENTITY
+        else []
+    )
+    return [*r.columns, *extra]
+
+
+def with_custom(db: Session, name: str, rows: list[dict]) -> list[dict]:
+    if name not in REPORT_ENTITY:
+        return rows
+    vals = values_for(db, REPORT_ENTITY[name], [row.get("id") for row in rows])
+    return [
+        row | {f"cf_{k}": v for k, v in vals.get(str(row.get("id")), {}).items()} for row in rows
+    ]
+
+
 def _describe(name: str, r: Report) -> dict:
     return {"name": name, "title": r.title, "area": r.area, "columns": [{"key": k, "label": lab} for k, lab in r.columns],
             "filters": list(r.filters), "statuses": list(r.statuses), "flags": r.flags or {}, "date_label": r.date_label,
@@ -738,7 +774,7 @@ def _describe(name: str, r: Report) -> dict:
 
 @router.get("/reports")
 def list_reports(p: CurrentPrincipal) -> dict:
-    return {"items": [_describe(n, r) for n, r in REPORTS.items() if r.perm in p.permissions],
+    return {"items": [_describe(n, r) for n, r in REPORTS.items() if f"reports.{n}" in p.permissions],
             "areas": {a: label for a, (label, _) in AREAS.items()}, "can_export": "reports.export" in p.permissions}  # fmt: skip
 
 
@@ -748,7 +784,7 @@ def dashboards(p: CurrentPrincipal, db: DB) -> dict:
     out = []
     for area, (label, tiles) in AREAS.items():
         shown = [{"label": t, "report": rep, "filters": f, "count": count(db, REPORTS[rep], Filters(**f))}
-                 for t, rep, f in tiles if REPORTS[rep].perm in p.permissions]  # fmt: skip
+                 for t, rep, f in tiles if f"reports.{rep}" in p.permissions]  # fmt: skip
         if shown:
             out.append({"area": area, "label": label, "tiles": shown})
     return {"areas": out}
@@ -758,9 +794,15 @@ def dashboards(p: CurrentPrincipal, db: DB) -> dict:
 def report_rows(name: str, p: CurrentPrincipal, db: DB, f: Annotated[Filters, Query()],
                 limit: Limit = 50, offset: Offset = 0) -> dict:  # fmt: skip
     r = _report(name, p)
-    _checked(r, f)
+    _checked(db, name, r, f)
     rows, total = run(db, r, f, limit, offset)
-    return _describe(name, r) | {"items": rows, "total": total}
+    cols = [{"key": k, "label": lab} for k, lab in columns(db, name, r)]
+    return _describe(name, r) | {
+        "statuses": statuses_of(db, name, r),
+        "columns": cols,
+        "items": with_custom(db, name, rows),
+        "total": total,
+    }
 
 
 def _cell(v):
@@ -777,13 +819,15 @@ def _cell(v):
 def export_report(name: str, p: require("reports.export"), db: DB, f: Annotated[Filters, Query()],
                   format: Literal["csv", "xlsx"] = "csv") -> Response:  # fmt: skip
     r = _report(name, p)
-    _checked(r, f)
+    _checked(db, name, r, f)
     if (total := count(db, r, f)) > EXPORT_LIMIT:  # counted before any row is loaded
         raise conflict(
             f"{total} rows is more than {EXPORT_LIMIT} for one download: narrow the filters"
         )
     rows, _ = run(db, r, f, None)
-    keys, heads = [k for k, _ in r.columns], [lab for _, lab in r.columns]
+    rows = with_custom(db, name, rows)
+    cols = columns(db, name, r)
+    keys, heads = [k for k, _ in cols], [lab for _, lab in cols]
     stamp = _today().isoformat()
     if format == "csv":
         out = io.StringIO()

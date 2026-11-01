@@ -16,6 +16,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app import (
     assembly,
     codes,
+    custom,
     dispatch,
     files,
     installation,
@@ -181,6 +182,7 @@ for module in (
     messaging,
     notify,
     reports,
+    custom,
 ):
     api.include_router(module.router)
 

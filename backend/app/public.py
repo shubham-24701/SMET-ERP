@@ -127,6 +127,7 @@ def public_registration(
                              customer_name=customer_name.strip(), customer_contact=contact.strip(), updates_consent=updates, address=address.strip(),
                              distributor_name=seller.strip(), sale_date=purchase_date, notes="Submitted on the public form")  # fmt: skip
     try:
+        r.skip_required = True  # made by the system: required fields are filled later
         with db.begin_nested():
             db.add(r)
             db.flush()
@@ -178,6 +179,7 @@ def public_service_request(body: PublicSr, db: DB) -> dict:
     sr = ServiceRequest(number=next_number(db, "service_request"), source="public", reported_serial=body.serial.upper(),
                         contact_name=body.name, contact_phone=body.phone, updates_consent=body.updates, issue=body.issue,
                         preferred_visit=body.preferred_visit, **target)  # fmt: skip
+    sr.skip_required = True  # made by the system: required fields are filled later
     db.add(sr)
     db.flush()
     record(
