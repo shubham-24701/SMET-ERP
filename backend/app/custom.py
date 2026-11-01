@@ -12,6 +12,7 @@ Defining fields needs `fields.configure`; reading or filling values needs the re
 edit permission.
 """
 
+import math
 import re
 import uuid
 from datetime import date
@@ -211,7 +212,10 @@ def add_field(body: NewField, p: require("fields.configure"), db: DB) -> dict:
     f = CustomField(entity=body.entity, key=key, kind=body.kind, label=body.label, options=_checked_options(body.kind, body.options),
                     required=body.required, help=body.help, sort=body.sort, active=body.active)  # fmt: skip
     db.add(f)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError:  # the same field added twice at once
+        raise stale() from None
     record(
         db,
         p.user,
@@ -250,28 +254,65 @@ def edit_field(field_id: uuid.UUID, body: FieldPut, p: require("fields.configure
     return _def(f)
 
 
+# Finished records keep their extra details as they were, like the record itself.
+LOCKED: dict[str, set[str]] = {
+    "purchase_order": {"closed", "cancelled", "rejected"},
+    "assembly_order": {"completed", "cancelled"},
+    "sales_order": {"closed", "cancelled"},
+    "dispatch": {"delivered", "cancelled"},
+    "site_visit": {"completed", "cancelled"},
+    "warranty_registration": {"approved", "rejected", "ended"},
+    "amc_contract": {"renewed", "cancelled"},
+    "service_request": {"closed"},
+}
+
+
 def _record(db: Session, p: Principal, entity: str, record_id: uuid.UUID, write: bool):
     model, label, view, edit = _entity(entity)
     if not (any(x in p.permissions for x in edit) if write else view in p.permissions):
         raise HTTPException(403, "You don't have permission for this record")
-    if db.get(model, record_id) is None:
+    obj = db.get(model, record_id)
+    if obj is None:
         raise HTTPException(404, "Record not found")
+    if write:
+        if entity == "site_visit":  # technicians: only visits they are on, as for the visit record
+            from app.installation import check_may_work  # noqa: PLC0415
+
+            check_may_work(p, obj)
+        locked = getattr(obj, "status", "") in LOCKED.get(entity, set())
+        if locked and not (
+            entity == "warranty_registration" and "warranty.correct" in p.permissions
+        ):
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                f"This record is {obj.status.replace('_', ' ')}: its details can't change",
+            )
 
 
 @router.get("/custom-values/{entity}/{record_id}")
 def get_values(entity: str, record_id: uuid.UUID, p: CurrentPrincipal, db: DB) -> dict:
     _record(db, p, entity, record_id, write=False)
+    return _values_row(db, entity, record_id)
+
+
+def _values_row(db: Session, entity: str, record_id: uuid.UUID) -> dict:
     v = db.get(CustomValues, (entity, record_id))
     defs = active_fields(db, entity)
     return {"fields": [_def(f) for f in defs], "values": (v.values if v else {}), "version": v.version if v else 0,
             "missing": [f.label for f in defs if f.required and (v is None or v.values.get(f.key) in (None, ""))]}  # fmt: skip
 
 
-def _value(f: CustomField, v):
-    """The value in its stored form, or a field error."""
+def _value(f: CustomField, v, stored=None):
+    """The value in its stored form, or a field error. A value already stored is kept as it is (an
+    option removed later doesn't make the record unsaveable)."""
     if v is None or v == "":
         return None
+    if v == stored and type(v) is type(stored):
+        return v
     try:
+        if f.kind in ("text", "long_text", "choice") and not isinstance(v, str):
+            if f.kind == "choice" or isinstance(v, bool) or not isinstance(v, int | float):
+                raise ValueError
         if f.kind in ("text", "long_text"):
             s = str(v).strip()
             if len(s) > (4000 if f.kind == "long_text" else 300):
@@ -280,7 +321,12 @@ def _value(f: CustomField, v):
         if f.kind == "number":
             if isinstance(v, bool):
                 raise ValueError
-            return float(v) if "." in str(v) else int(v)
+            if not isinstance(v, int | float | str):
+                raise ValueError
+            n = float(v) if "." in str(v) or "e" in str(v).lower() else int(v)
+            if not math.isfinite(n) or abs(n) > 1e15:
+                raise ValueError
+            return n
         if f.kind == "date":
             return date.fromisoformat(str(v)).isoformat()
         if f.kind == "yes_no":
@@ -291,7 +337,7 @@ def _value(f: CustomField, v):
             if v not in f.options:
                 raise ValueError
             return v
-    except ValueError:
+    except (ValueError, TypeError, OverflowError):
         raise field_error(
             f"values.{f.key}", f"{f.label}: not a valid {f.kind.replace('_', ' ')}"
         ) from None
@@ -318,7 +364,7 @@ def save_values(
     new = dict(old)  # values of fields switched off since are kept, not erased
     for k, f in defs.items():
         if k in body.values:
-            new[k] = _value(f, body.values[k])
+            new[k] = _value(f, body.values[k], old.get(k))
         if f.required and new.get(k) in (None, ""):
             raise field_error(f"values.{k}", f"{f.label} is required")
     new = {k: v for k, v in new.items() if v is not None}
@@ -337,7 +383,7 @@ def save_values(
         db.commit()
     except IntegrityError:
         raise stale() from None
-    return get_values(entity, record_id, p, db)
+    return _values_row(db, entity, record_id)
 
 
 def values_for(db: Session, entity: str, ids: list) -> dict:
@@ -354,31 +400,44 @@ def values_for(db: Session, entity: str, ids: list) -> dict:
 
 
 # Records the system makes by itself carry `skip_required = True` (set before they are added).
-@event.listens_for(Session, "before_flush")
-def _required_builtins(session: Session, _ctx, _instances) -> None:
-    objs = [
-        o
-        for o in (*session.new, *session.dirty)
-        if type(o) in MODEL_ENTITY and not getattr(o, "skip_required", False)
-    ]
-    if not objs:
-        return
+# Each flush notes what was created or which required fields changed; the commit then checks the
+# final values, so routes that fill a record over several steps aren't stopped half-way.
+def _required(session: Session) -> set:
     if "required_fields" not in session.info:
         with session.no_autoflush:
             session.info["required_fields"] = {
                 (s.entity, s.field) for s in session.scalars(select(FieldSetting).where(FieldSetting.required))
                 if s.field in BUILTIN.get(s.entity, {})}  # fmt: skip
-    required = session.info["required_fields"]
-    if not required:
+    return session.info["required_fields"]
+
+
+@event.listens_for(Session, "after_flush")
+def _note_required(session: Session, _ctx) -> None:
+    objs = [
+        o
+        for o in (*session.new, *session.dirty)
+        if type(o) in MODEL_ENTITY and not getattr(o, "skip_required", False)
+    ]
+    if not objs or not (required := _required(session)):
         return
+    pending = session.info.setdefault("check_required", {})
     for o in objs:
         entity = MODEL_ENTITY[type(o)]
-        state = inspect(o)
-        for field in BUILTIN.get(entity, {}):
-            if (entity, field) not in required:
-                continue
-            if o in session.dirty and not state.attrs[field].history.has_changes():
-                continue
+        fields = {f for f in BUILTIN.get(entity, {}) if (entity, f) in required}
+        if o not in session.new:
+            state = inspect(o)
+            fields = {f for f in fields if state.attrs[f].history.has_changes()}
+        if fields:
+            pending.setdefault(id(o), (o, set()))[1].update(fields)
+
+
+@event.listens_for(Session, "before_commit")
+def _check_required(session: Session) -> None:
+    if session.new or session.dirty:  # commit flushes after this event: flush now so it is noted
+        session.flush()
+    for o, fields in session.info.pop("check_required", {}).values():
+        entity = MODEL_ENTITY[type(o)]
+        for field in sorted(fields):
             v = getattr(o, field)
             if v is None or (isinstance(v, str) and not v.strip()):
                 with session.no_autoflush:
@@ -392,3 +451,4 @@ def _required_builtins(session: Session, _ctx, _instances) -> None:
 @event.listens_for(Session, "after_rollback")
 def _forget(session: Session) -> None:
     session.info.pop("required_fields", None)
+    session.info.pop("check_required", None)

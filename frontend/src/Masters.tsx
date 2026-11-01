@@ -601,7 +601,8 @@ function WorkflowRules({ r, version, edit, roles, onSaved }: { r: Rules; version
     <form className="settings-row" noValidate onSubmit={(e) => {
       e.preventDefault()
       const fd = new FormData(e.currentTarget)
-      const event_roles = Object.fromEntries(events.map((ev) => [ev.key, fd.getAll(`roles_${ev.key}`).map(String)]))
+      // without the roles list (no roles.view) the selects are empty: leave the setting as it is
+      const event_roles = roles.length ? Object.fromEntries(events.map((ev) => [ev.key, fd.getAll(`roles_${ev.key}`).map(String)])) : undefined
       const keys = new Set(Object.keys(statuses))
       const cleaned = Object.fromEntries(Object.entries(moves).filter(([k]) => keys.has(k)).map(([k, v]) => [k, v.filter((x) => keys.has(x))]))
       setFields({})
@@ -616,7 +617,7 @@ function WorkflowRules({ r, version, edit, roles, onSaved }: { r: Rules; version
         <h3 className="section">Also tell these roles</h3>
         <div className="grid-fields">{events.map((ev) => (
           <div key={ev.key} className="field"><label htmlFor={`er-${ev.key}`}>{ev.label}</label>
-            <select id={`er-${ev.key}`} name={`roles_${ev.key}`} multiple size={Math.min(4, Math.max(roles.length, 2))} defaultValue={r.event_roles[ev.key] ?? []}>
+            <select key={roles.length ? 'roles' : 'loading'} id={`er-${ev.key}`} name={`roles_${ev.key}`} multiple disabled={!roles.length} size={Math.min(4, Math.max(roles.length, 2))} defaultValue={r.event_roles[ev.key] ?? []}>
               {roles.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
             </select></div>
         ))}</div>
@@ -625,7 +626,10 @@ function WorkflowRules({ r, version, edit, roles, onSaved }: { r: Rules; version
         <p className="hint">New and Closed always exist; closing has its own button. Add your own steps and tick where each status may go next.</p>
         {extra.map((x, i) => (
           <div key={i} className="grid-fields">
-            <Field label="Name" value={x.label} maxLength={40} onChange={(e) => setExtra(extra.map((y, j) => (j === i ? { label: e.target.value, key: y.key || e.target.value.toLowerCase().replace(/[^a-z]+/g, '_').replace(/^_|_$/g, '').slice(0, 16) } : y)))} />
+            <Field label="Name" value={x.label} maxLength={40} error={x.label && !x.key ? 'Start the name with a letter A–Z' : undefined}
+              onChange={(e) => setExtra(extra.map((y, j) => (j !== i ? y : { label: e.target.value,
+                // the key follows the name until the status is saved; after that it stays, as requests use it
+                key: r.sr_statuses.some((z) => z.key === y.key) ? y.key : e.target.value.toLowerCase().replace(/[^a-z]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 16) })))} />
             <button type="button" className="btn btn-ghost" onClick={() => setExtra(extra.filter((_, j) => j !== i))}>Remove</button>
           </div>
         ))}

@@ -761,8 +761,10 @@ def with_custom(db: Session, name: str, rows: list[dict]) -> list[dict]:
     if name not in REPORT_ENTITY:
         return rows
     vals = values_for(db, REPORT_ENTITY[name], [row.get("id") for row in rows])
+    active = {f.key for f in active_fields(db, REPORT_ENTITY[name])}  # switched-off fields stay out
     return [
-        row | {f"cf_{k}": v for k, v in vals.get(str(row.get("id")), {}).items()} for row in rows
+        row | {f"cf_{k}": v for k, v in vals.get(str(row.get("id")), {}).items() if k in active}
+        for row in rows
     ]
 
 

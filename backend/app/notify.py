@@ -57,6 +57,7 @@ from app.models import (
     WarrantyRegistration,
     utcnow,
 )
+from app.service import sr_flow
 
 router = APIRouter(tags=["notifications"])
 
@@ -209,7 +210,7 @@ def _service(db, a):
              link, holders(db, "service.create"), entity=ent, actor_id=a["actor"], customer=customer)  # fmt: skip
         return
     to = (a["changes"].get("status") or [None, sr.status])[1]
-    emit(db, "service.status", a["key"], {"number": sr.number, "status": str(to).replace("_", " "), "summary": a["summary"]},
+    emit(db, "service.status", a["key"], {"number": sr.number, "status": sr_flow(db)[0].get(str(to), str(to)).lower(), "summary": a["summary"]},
          link, {sr.coordinator_id, sr.created_by}, entity=ent, actor_id=a["actor"],
          customer=(sr.contact_phone, sr.updates_consent))  # fmt: skip
 

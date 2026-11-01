@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { api, ApiError } from './api'
-import { FieldConfigContext, useAction, useApi, useCan, type CustomDef, type FieldConfig } from './lib'
+import { FieldConfigContext, FieldScope, useAction, useApi, useCan, type CustomDef, type FieldConfig } from './lib'
 import { day, Facts } from './ops'
 import { Dialog, Field, FormError, PageHead, PageState, SelectField, Tag, TextareaField } from './ui'
 
@@ -42,7 +42,7 @@ function ValuesForm({ entity, id, data, onClose, onSaved }: { entity: string; id
   const action = useAction(onSaved)
   return (
     <Dialog title="More details" onClose={onClose}>
-      <form noValidate onSubmit={(e) => {
+      <FieldScope value=""><form noValidate onSubmit={(e) => {
         e.preventDefault()
         const fd = new FormData(e.currentTarget)
         const values = Object.fromEntries(data.fields.map((f) => [f.key, f.kind === 'yes_no' ? (fd.get(f.key) === '' ? null : fd.get(f.key) === 'yes') : fd.get(f.key) ?? '']))
@@ -54,14 +54,15 @@ function ValuesForm({ entity, id, data, onClose, onSaved }: { entity: string; id
           const v = data.values[f.key]
           const common = { label: f.label + (f.required ? ' *' : ''), name: f.key, hint: f.help || undefined, error: fields[`values.${f.key}`] }
           if (f.kind === 'long_text') return <TextareaField key={f.key} {...common} defaultValue={String(v ?? '')} maxLength={4000} rows={3} />
-          if (f.kind === 'choice') return <SelectField key={f.key} {...common} defaultValue={String(v ?? '')} options={[['', '—'], ...f.options.map((o): [string, string] => [o, o])]} />
+          if (f.kind === 'choice') return <SelectField key={f.key} {...common} defaultValue={String(v ?? '')}
+            options={[['', '—'], ...[...f.options, ...(v !== undefined && !f.options.includes(String(v)) ? [String(v)] : [])].map((o): [string, string] => [o, o])]} />
           if (f.kind === 'yes_no') return <SelectField key={f.key} {...common} defaultValue={v === undefined ? '' : v ? 'yes' : 'no'} options={[['', '—'], ['yes', 'Yes'], ['no', 'No']]} />
           return <Field key={f.key} {...common} type={f.kind === 'number' ? 'number' : f.kind === 'date' ? 'date' : 'text'} step={f.kind === 'number' ? 'any' : undefined}
             defaultValue={String(v ?? '')} maxLength={f.kind === 'text' ? 300 : undefined} />
         })}
         <FormError message={action.error} />
         <div className="dialog-actions"><button className="btn btn-primary" disabled={!!action.busy}>Save details</button></div>
-      </form>
+      </form></FieldScope>
     </Dialog>
   )
 }
@@ -148,7 +149,7 @@ function FieldForm({ entity, f, onClose, onSaved }: { entity: string; f: CustomD
         {kind === 'choice' && <TextareaField label="Options, one per line" name="options" rows={4} defaultValue={f?.options.join('\n')} error={fields.options} />}
         <Field label="Help text" name="help" maxLength={200} defaultValue={f?.help} />
         <Field label="Order" name="sort" type="number" min={0} max={999} defaultValue={f?.sort ?? 0} />
-        <label className="check"><input type="checkbox" name="required" defaultChecked={f?.required} /> <span>Required</span></label>
+        <label className="check"><input type="checkbox" name="required" defaultChecked={f?.required} /> <span>Required (the record shows "still to fill in" until it is)</span></label>
         {f && <label className="check"><input type="checkbox" name="active" defaultChecked={f.active} /> <span>On (switched off, it is hidden but its values are kept)</span></label>}
         <FormError message={action.error} />
         <div className="dialog-actions"><button className="btn btn-primary" disabled={!!action.busy}>{f ? 'Save field' : 'Add field'}</button></div>

@@ -219,17 +219,19 @@ class SrStatus(BaseModel):
     label: Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=40)]
 
 
-def _check_workflow(db: Session, after: dict) -> None:
+def _check_workflow(db: Session, after: dict, check_roles: bool) -> None:
     from app.messaging import EVENTS  # noqa: PLC0415  (messaging imports this module)
     from app.service import SR_BUILTIN  # noqa: PLC0415
 
-    for event, roles in after["event_roles"].items():
+    for event, roles in (after["event_roles"] if check_roles else {}).items():
         if event not in EVENTS:
             raise field_error("event_roles", f"Unknown event {event}")
         if any(db.get(Role, uuid.UUID(str(r))) is None for r in roles):
             raise field_error("event_roles", "Choose existing roles")
     keys = [s["key"] for s in after["sr_statuses"]]
-    if set(keys) & set(SR_BUILTIN) or len(set(keys)) != len(keys):
+    if set(keys) & {*SR_BUILTIN, "open"} or len(set(keys)) != len(
+        keys
+    ):  # "open" is the list filter
         raise field_error("sr_statuses", "Each new status needs its own name, not a built-in one")
     statuses = set(SR_BUILTIN) | set(keys)
     moves = after["sr_moves"]
@@ -309,7 +311,9 @@ def update_rules(body: RulesPatch, p: require("settings.configure"), db: DB) -> 
         elif k == "sr_statuses":
             v = [s.model_dump() for s in v]
         after[k] = str(v) if isinstance(v, Decimal | uuid.UUID) else v
-    _check_workflow(db, after)
+    _check_workflow(
+        db, after, "event_roles" in body.model_fields_set
+    )  # a role deleted since blocks nothing else
     c.rules = {k: after[k] for k in RULE_DEFAULTS}
     c.version += 1
     record(
